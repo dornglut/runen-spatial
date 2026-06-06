@@ -1,0 +1,11 @@
+[package]
+name = "world_core_prelude"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chunking.workspace = true
+spatial.workspace = true
+spatial_index.workspace = true
+world_streaming.workspace = true

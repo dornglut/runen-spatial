@@ -1,0 +1,9 @@
+[package]
+name = "world_streaming"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chunking.workspace = true
+spatial.workspace = true

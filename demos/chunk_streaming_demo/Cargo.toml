@@ -1,0 +1,10 @@
+[package]
+name = "chunk_streaming_demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+tile_topology = { path = "../../../grid/crates/tile_topology" }
+world_core_prelude = { path = "../../crates/world_core_prelude" }
