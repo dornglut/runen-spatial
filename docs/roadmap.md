@@ -633,6 +633,10 @@ Runenwerk integration does not move SDF, ECS, product, procgen, renderer,
 editor, save, or app semantics into grid, spatial_streaming, or the Godot lab.
 ```
 
+Current status: Godot proof evidence exists in
+`/Users/joshua/Projekte/godot_world_lab/docs/proof-report.md`. Runenwerk feature
+integration remains deferred and was not performed as part of this roadmap run.
+
 ## Hard Non-Goals Before M12
 
 ```text
@@ -662,34 +666,26 @@ No Godot scripts as reusable topology or streaming policy truth.
 | Generation moves to reusable crates too early | Prototype policy hardens into bad public API. | Keep generation in Godot lab until stable reusable rules emerge. |
 | Runenwerk integration starts early | Platform-specific SDF/product/editor semantics leak back into reusable crates. | Keep only compatibility wrappers before Godot proof; block feature integration until M3-M9 are proven independently. |
 
-## Immediate Next Work
+## Current Execution Status
 
-Start with M0.
-
-Implementation prompt:
+Completed in this roadmap run:
 
 ```text
-Review and harden Crystonix/spatial_streaming/crates/world_streaming.
-
-Focus files:
-- crates/world_streaming/src/controller.rs
-- crates/world_streaming/src/events.rs
-- crates/world_streaming/src/request.rs
-- crates/world_streaming/src/error.rs
-- crates/world_streaming/tests/controller.rs
-- adapters/godot_world_streaming/src/world_streaming_node.rs
-- docs/streaming-lifecycle.md
-
-Required corrections:
-1. Remove cancellation request kinds for now and document providers as
-   non-cancellable.
-2. Stop automatic failed-chunk retry loops.
-3. Add explicit retry_failed_chunk(chunk_id).
-4. Add request_id: Option<StreamRequestId> to WorldStreamingEvent.
-5. Add lifecycle tests for desired-state reversals, failure retry, undesired
-   completion unload queueing, and deterministic event order.
-6. Do not introduce IO, async runtime, Godot nodes, ECS, assets, SDF, renderer
-   state, Runenwerk concepts, or provider ownership.
-
-Return changed files, tests added, and exact validation commands.
+M0 spatial_streaming lifecycle hardening
+M1 grid descriptor/catalog boundary hardening
+M2 Godot world lab scaffold
+M3 streaming debug boxes
+M4 deterministic chunk generation
+M5 grid descriptor conversion
+M6 MultiMesh chunk visuals
+M7 unload, pooling, and budget pressure
+M8 host-owned async provider and memory cache
+M9 dirty-cell incremental updates
+M10 mesh/material/catalog variants
+M11 optional ArrayMesh backend
+M12 proof report and deferred Runenwerk handoff
 ```
+
+Runenwerk feature integration is the next separate decision point, not an
+automatic continuation. Start it only after reviewing the Godot proof report and
+choosing the exact Runenwerk compatibility or feature surface to migrate.
