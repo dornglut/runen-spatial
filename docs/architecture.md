@@ -39,6 +39,7 @@ spatial_streaming/
     streaming-lifecycle.md
     godot-integration.md
     grid-composition.md
+    roadmap.md
     runenwerk-integration.md
 ```
 

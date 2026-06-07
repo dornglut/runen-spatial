@@ -1,7 +1,9 @@
 # Runenwerk Integration
 
-Runenwerk integration is staged through compatibility wrappers after the
-standalone core, adapter, and demo are proven.
+Runenwerk feature integration is deferred until the Godot world lab proves the
+streaming and visual slice end to end. The existing Runenwerk wrapper migration
+is a compatibility bridge only; it is not the start of product/runtime
+integration.
 
 ## Migration Status
 
@@ -14,7 +16,25 @@ standalone core, adapter, and demo are proven.
 4. The wrapper packages are versioned separately from the extracted packages so
    Cargo can represent both packages in one lockfile during the transition.
 5. `godot_chunking_addon` still compiles against the wrappers. Replacing it
-   with `godot_world_streaming` remains a later app-integration decision.
+   with `godot_world_streaming` is deferred until the Godot lab proves the
+   streaming-only, generated-grid, visual-descriptor, MultiMesh, unload, cache,
+   and dirty-update path.
+
+## Deferred Feature Integration
+
+Do not bring the Godot lab result back into Runenwerk until the lab has proven:
+
+- streaming debug boxes;
+- deterministic chunk-local generation;
+- descriptor conversion through `godot_grid`;
+- custom MultiMesh chunk visuals;
+- unload and pooling behavior;
+- host-owned async provider behavior;
+- optional cache/save behavior if it exists;
+- dirty-cell incremental updates.
+
+Until then, Runenwerk should only consume the compatibility wrappers needed to
+avoid duplicate local spatial/chunking implementations.
 
 ## Remaining Cleanup
 
@@ -35,7 +55,7 @@ Runenwerk:
 - ECS resources and systems;
 - networking replication state.
 
-## Validation Before Migration
+## Validation Before Future Integration
 
 - `cargo test` in `spatial_streaming`.
 - Runenwerk checks for current spatial/chunking consumers.

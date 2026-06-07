@@ -66,3 +66,9 @@ cargo run -p chunk_streaming_demo
 2. Stage 2 complete: `godot_world_streaming` adapter-only Godot extension.
 3. Stage 3 complete: chunk streaming demo composing lifecycle events with `Crystonix/grid`.
 4. Stage 4 complete: Runenwerk compatibility wrappers point at these extracted crates.
+
+## Roadmap
+
+See [docs/roadmap.md](docs/roadmap.md) for the cross-repository milestone plan.
+The next required milestone is M0: harden `world_streaming` lifecycle
+correctness before serious Godot world work.
