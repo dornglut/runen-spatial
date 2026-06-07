@@ -2,7 +2,7 @@
 
 | Crate | Owns | Must not own |
 | --- | --- | --- |
-| `spatial` | World ids, world/local positions, chunk and region coordinates, hierarchy, grid partitioning, clipmap windows, ring-buffer mapping, minimal reusable spatial bounds DTOs. | Residency decisions, streaming lifecycle, IO, ECS, SDF payloads, rendering, editor behavior. |
+| `spatial` | World ids, world/local positions, chunk and region coordinates, hierarchy, grid partitioning, clipmap windows, ring-buffer mapping, minimal reusable spatial bounds DTOs, payload-neutral spatial hash helpers. | Residency decisions, streaming lifecycle, generation rules, IO, ECS, SDF payloads, rendering, editor behavior. |
 | `spatial_index` | Spatial lookup and indexing over stable keys and `spatial::SpatialAabb3`. | Geometry vocabulary, chunk policy, collision response, ECS resources, world edit invalidation. |
 | `chunking` | Desired chunk residency math: focus, load/unload radii, planar or 3D mode, chunk sets, diffs, deterministic ordering. | Loading, unloading, lifecycle states, provider IO, payload ownership. |
 | `world_streaming` | Chunk lifecycle states, stream requests, provider events, deterministic lifecycle events, budgets, priorities, resident failure reporting. | SDF payloads, ECS spawning, asset catalogs, renderer resources, Godot nodes, save formats, mesh generation. |

@@ -18,6 +18,8 @@
 - `RingBufferConfig`
 - `SpatialPoint3`
 - `SpatialAabb3`
+- `SpatialHashSeed`
+- `SpatialHashValue`
 
 ## Coordinate Rules
 
@@ -45,3 +47,21 @@ It supports:
 - AABB intersection checks.
 
 It does not replace a full geometry library.
+
+## Spatial Hash
+
+`spatial::hash` owns payload-neutral deterministic integer hashing for spatial
+keys. It can hash ordered signed integer coordinates such as 2D or 3D world
+cells and map a hash into a bucket index.
+
+The hash API does not own:
+
+- generation rules;
+- wall thresholds;
+- tile descriptors;
+- biome, material, or asset policy;
+- residency or streaming lifecycle;
+- SDF, ECS, renderer, save, or provider behavior.
+
+Generation systems may use the hash as an input, but any meaning assigned to
+the hash stays in the host or a future generation crate.

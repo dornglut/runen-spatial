@@ -10,6 +10,12 @@ pub mod ring;
 
 pub use bounds::{SpatialAabb3, SpatialPoint3};
 pub use frames::{CameraRelativeFrame, WorldFrame, build_camera_relative_frame};
+pub use hash::{
+    SpatialHashSeed, SpatialHashValue, finalize_u64 as finalize_spatial_hash,
+    hash_cell2 as spatial_hash_cell2, hash_cell3 as spatial_hash_cell3,
+    hash_i64s as spatial_hash_i64s, mix_i64 as mix_spatial_hash_i64,
+    mix_u64 as mix_spatial_hash_u64,
+};
 pub use ids::WorldId;
 pub use positions::{WorldLocalPosition, WorldPosition};
 
