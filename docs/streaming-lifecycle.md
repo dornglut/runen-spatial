@@ -39,7 +39,8 @@ Absent
 
 Loading -> Failed
 Resident -> Failed
-Failed -> LoadQueued | Absent
+Failed -> LoadQueued by explicit retry
+Failed -> Absent when no longer desired
 ```
 
 `Queued` means the controller wants to spend budget on the transition.
@@ -51,6 +52,15 @@ host/provider handoff.
 
 `Resident` means the core knows the provider completed the chunk residency
 transition. It does not imply visual, physics, gameplay, or save readiness.
+
+Provider work is non-cancellable in the current contract. If desired state
+changes while a load or unload request is active, the controller records the new
+desired state and waits for the provider to report completion or failure. Follow
+up load/unload queueing is then emitted deterministically.
+
+Failed chunks do not automatically retry. A desired failed chunk stays `Failed`
+until the host calls explicit retry. This prevents persistent provider failures
+from creating an unbounded retry loop.
 
 ## Public API Sketch
 
@@ -76,8 +86,6 @@ pub enum ChunkLifecycleState {
 pub enum StreamRequestKind {
     Load,
     Unload,
-    CancelLoad,
-    CancelUnload,
 }
 
 pub struct StreamRequest {
@@ -91,7 +99,6 @@ pub enum ProviderEventKind {
     Started,
     Completed,
     Failed,
-    Cancelled,
 }
 
 pub struct ProviderEvent {
@@ -110,6 +117,12 @@ pub enum WorldStreamingEventKind {
     UnloadQueued,
     UnloadRequested,
     Unloaded,
+}
+
+pub struct WorldStreamingEvent {
+    pub chunk_id: spatial::ChunkId,
+    pub request_id: Option<StreamRequestId>,
+    pub kind: WorldStreamingEventKind,
 }
 ```
 

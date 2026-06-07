@@ -24,4 +24,9 @@ pub enum WorldStreamingError {
         chunk_id: ChunkId,
         state: ChunkLifecycleState,
     },
+    InvalidFailedRetry {
+        chunk_id: ChunkId,
+        state: ChunkLifecycleState,
+        desired: bool,
+    },
 }

@@ -27,8 +27,10 @@ to the host application or domain-specific systems.
 - Build `GridPartitionConfig` and chunking config from Godot-facing fields.
 - Tick `WorldStreamingController`.
 - Translate core events to Godot signals.
-- Accept provider-started, provider-completed, provider-failed, and
-  provider-cancelled callbacks from host code.
+- Accept provider-started, provider-completed, and provider-failed callbacks
+  from host code.
+- Treat provider work as non-cancellable. Desired-state reversals are resolved
+  by provider completion or failure events.
 
 ## Out of Scope
 

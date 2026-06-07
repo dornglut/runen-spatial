@@ -148,7 +148,6 @@ impl WorldStreamingController {
             let diff = self.streamer.update_focus(focus);
             self.apply_chunk_diff(center, diff, &mut events);
         }
-        self.requeue_failed_records(&mut events);
 
         let mut requests = Vec::new();
         self.emit_requests_for_state(
@@ -201,8 +200,9 @@ impl WorldStreamingController {
                 ChunkLifecycleState::LoadRequested,
             ) => {
                 record.state = ChunkLifecycleState::Loading;
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderStarted,
                 ));
             }
@@ -215,12 +215,14 @@ impl WorldStreamingController {
                 record.active_request_id = None;
                 record.active_request_kind = None;
                 record.state = ChunkLifecycleState::Resident;
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderCompleted,
                 ));
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::Resident,
                 ));
                 if !record.desired {
@@ -239,9 +241,14 @@ impl WorldStreamingController {
                 self.pending_requests.remove(&event.request_id);
                 record.active_request_id = None;
                 record.active_request_kind = None;
-                record.state = ChunkLifecycleState::Failed;
-                events.push(WorldStreamingEvent::new(
+                record.state = if record.desired {
+                    ChunkLifecycleState::Failed
+                } else {
+                    ChunkLifecycleState::Absent
+                };
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderFailed,
                 ));
             }
@@ -251,8 +258,9 @@ impl WorldStreamingController {
                 ChunkLifecycleState::UnloadRequested,
             ) => {
                 record.state = ChunkLifecycleState::Unloading;
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderStarted,
                 ));
             }
@@ -265,14 +273,23 @@ impl WorldStreamingController {
                 record.active_request_id = None;
                 record.active_request_kind = None;
                 record.state = ChunkLifecycleState::Absent;
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderCompleted,
                 ));
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::Unloaded,
                 ));
+                if record.desired {
+                    record.state = ChunkLifecycleState::LoadQueued;
+                    events.push(WorldStreamingEvent::new(
+                        record.chunk_id,
+                        WorldStreamingEventKind::LoadQueued,
+                    ));
+                }
             }
             (
                 StreamRequestKind::Unload,
@@ -283,20 +300,11 @@ impl WorldStreamingController {
                 record.active_request_id = None;
                 record.active_request_kind = None;
                 record.state = ChunkLifecycleState::Failed;
-                events.push(WorldStreamingEvent::new(
+                events.push(WorldStreamingEvent::with_request(
                     record.chunk_id,
+                    event.request_id,
                     WorldStreamingEventKind::ProviderFailed,
                 ));
-            }
-            (_, ProviderEventKind::Cancelled, _) => {
-                self.pending_requests.remove(&event.request_id);
-                record.active_request_id = None;
-                record.active_request_kind = None;
-                record.state = if record.desired {
-                    ChunkLifecycleState::LoadQueued
-                } else {
-                    ChunkLifecycleState::Absent
-                };
             }
             _ => {
                 return Err(WorldStreamingError::InvalidProviderEvent {
@@ -332,6 +340,26 @@ impl WorldStreamingController {
         ))
     }
 
+    pub fn retry_failed_chunk(
+        &mut self,
+        chunk_id: ChunkId,
+    ) -> Result<WorldStreamingEvent, WorldStreamingError> {
+        let Some(record) = self.records.get_mut(&chunk_id) else {
+            return Err(WorldStreamingError::UnknownChunk { chunk_id });
+        };
+        if record.state != ChunkLifecycleState::Failed || !record.desired {
+            return Err(WorldStreamingError::InvalidFailedRetry {
+                chunk_id,
+                state: record.state,
+                desired: record.desired,
+            });
+        }
+
+        record.state = ChunkLifecycleState::LoadQueued;
+        let event = WorldStreamingEvent::new(chunk_id, WorldStreamingEventKind::LoadQueued);
+        Ok(event)
+    }
+
     fn apply_chunk_diff(
         &mut self,
         center: ChunkCoord3,
@@ -364,15 +392,24 @@ impl WorldStreamingController {
         record.desired = true;
         record.priority = priority;
 
-        if matches!(
-            record.state,
-            ChunkLifecycleState::Absent | ChunkLifecycleState::Failed
-        ) {
-            record.state = ChunkLifecycleState::LoadQueued;
-            events.push(WorldStreamingEvent::new(
-                chunk_id,
-                WorldStreamingEventKind::LoadQueued,
-            ));
+        match record.state {
+            ChunkLifecycleState::Absent => {
+                record.state = ChunkLifecycleState::LoadQueued;
+                events.push(WorldStreamingEvent::new(
+                    chunk_id,
+                    WorldStreamingEventKind::LoadQueued,
+                ));
+            }
+            ChunkLifecycleState::UnloadQueued => {
+                record.state = ChunkLifecycleState::Resident;
+            }
+            ChunkLifecycleState::Failed
+            | ChunkLifecycleState::LoadQueued
+            | ChunkLifecycleState::LoadRequested
+            | ChunkLifecycleState::Loading
+            | ChunkLifecycleState::Resident
+            | ChunkLifecycleState::UnloadRequested
+            | ChunkLifecycleState::Unloading => {}
         }
     }
 
@@ -427,7 +464,6 @@ impl WorldStreamingController {
             record.state = match request_kind {
                 StreamRequestKind::Load => ChunkLifecycleState::LoadRequested,
                 StreamRequestKind::Unload => ChunkLifecycleState::UnloadRequested,
-                StreamRequestKind::CancelLoad | StreamRequestKind::CancelUnload => record.state,
             };
             record.active_request_id = Some(request_id);
             record.active_request_kind = Some(request_kind);
@@ -440,44 +476,14 @@ impl WorldStreamingController {
             };
             self.pending_requests.insert(request_id, request);
             requests.push(request);
-            events.push(WorldStreamingEvent::new(
+            events.push(WorldStreamingEvent::with_request(
                 chunk_id,
+                request_id,
                 match request_kind {
                     StreamRequestKind::Load => WorldStreamingEventKind::LoadRequested,
                     StreamRequestKind::Unload => WorldStreamingEventKind::UnloadRequested,
-                    StreamRequestKind::CancelLoad => WorldStreamingEventKind::LoadRequestCancelled,
-                    StreamRequestKind::CancelUnload => {
-                        WorldStreamingEventKind::UnloadRequestCancelled
-                    }
                 },
             ));
-        }
-    }
-
-    fn requeue_failed_records(&mut self, events: &mut Vec<WorldStreamingEvent>) {
-        let failed = self
-            .records
-            .iter()
-            .filter_map(|(chunk_id, record)| {
-                (record.state == ChunkLifecycleState::Failed).then_some(*chunk_id)
-            })
-            .collect::<Vec<_>>();
-
-        for chunk_id in failed {
-            let Some(record) = self.records.get_mut(&chunk_id) else {
-                continue;
-            };
-            record.state = if record.desired {
-                ChunkLifecycleState::LoadQueued
-            } else {
-                ChunkLifecycleState::Absent
-            };
-            if record.state == ChunkLifecycleState::LoadQueued {
-                events.push(WorldStreamingEvent::new(
-                    chunk_id,
-                    WorldStreamingEventKind::LoadQueued,
-                ));
-            }
         }
     }
 

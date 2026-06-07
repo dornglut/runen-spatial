@@ -37,23 +37,30 @@ proof has validated streaming and visual realization independently.
 
 ## Critical Review
 
-The current repository boundaries are correct, but three areas need hardening
-before more visible work starts:
+The current repository boundaries are correct. The remaining long-term risk is
+scope creep: Godot can become too authoritative over topology, or
+`world_streaming` can silently absorb provider, async, cache, or save/load
+concerns.
 
-1. `world_streaming` lifecycle semantics are not strict enough yet.
-   `CancelLoad` and `CancelUnload` exist, failed chunks requeue automatically,
-   and streaming events do not carry request identity.
-2. The Godot path must stay a realization layer. It may own scenes, meshes,
-   materials, chunk roots, and debug UI, but it must not become the reusable
-   topology or streaming policy source.
-3. Save/load and async execution need explicit ownership. `world_streaming`
-   should remain a synchronous deterministic state machine. Hosts may load,
-   cache, save, await, thread, or defer work, but those mechanisms must not
-   leak into core lifecycle policy.
+M0 establishes the required lifecycle baseline:
+
+1. Provider work is non-cancellable until a complete cancellation contract is
+   designed.
+2. Failed chunks stay failed until explicit retry or cleanup.
+3. Streaming events carry optional request identity so host traces can
+   correlate provider work with lifecycle transitions.
+
+The Godot path must stay a realization layer. It may own scenes, meshes,
+materials, chunk roots, async provider experiments, cache prototypes, and debug
+UI, but it must not become the reusable topology or streaming policy source.
+
+Save/load and async execution need explicit ownership. `world_streaming` remains
+a synchronous deterministic state machine. Hosts may load, cache, save, await,
+thread, or defer work, but those mechanisms must not leak into core lifecycle
+policy.
 
 The revised sequence below treats correctness gates as blockers. Later
-milestones should not proceed by compensating for weak lifecycle behavior in
-Godot scripts.
+milestones should not compensate for weak lifecycle behavior in Godot scripts.
 
 ## Milestone Summary
 
@@ -74,6 +81,8 @@ M12 - Integrate with Runenwerk only after the Godot proof is complete
 ```
 
 ## M0 - Harden World Streaming
+
+Status: complete. This milestone is the baseline for M1+ work.
 
 Owner: `Crystonix/spatial_streaming`
 
@@ -96,14 +105,13 @@ Provider work is non-cancellable for now.
 ```
 
 Reason: real cancellation needs a provider contract, task ownership semantics,
-adapter behavior, and host guarantees. Keeping `CancelLoad` and `CancelUnload`
-without those contracts is worse than not supporting cancellation. Remove those
-request kinds for now and document provider work as non-cancellable. Add
-cancellation later only as a complete contract.
+adapter behavior, and host guarantees. Advertising cancellation without those
+contracts is worse than not supporting cancellation. Add cancellation later only
+as a complete contract.
 
-Required corrections:
+Implemented contract:
 
-- Remove `CancelLoad` and `CancelUnload` from `StreamRequestKind`.
+- Request kinds are load and unload only.
 - Remove unconditional failed-record requeue behavior.
 - Add explicit retry API, for example
   `WorldStreamingController::retry_failed_chunk(chunk_id)`.
@@ -116,8 +124,8 @@ Required corrections:
   load work was active: completion reaches `Resident`, then queues unload in a
   stable event order.
 - Keep provider completion deterministic when a chunk became desired while
-  unload work was active: completion reaches `Absent`, then the next tick may
-  queue load.
+  unload work was active: completion reaches `Absent`, then queues load in a
+  stable event order.
 - Update the Godot adapter to use event request ids instead of side-channel
   correlation where possible.
 

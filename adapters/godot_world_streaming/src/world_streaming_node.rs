@@ -198,11 +198,6 @@ impl GodotWorldStreamingNode {
     }
 
     #[func]
-    pub fn provider_cancelled(&mut self, request_id: i64, x: i32, y: i32, z: i32) {
-        self.accept_provider_event_from_godot(request_id, x, y, z, ProviderEventKind::Cancelled);
-    }
-
-    #[func]
     pub fn resident_chunk_count(&self) -> i64 {
         self.count_records_with_state(ChunkLifecycleState::Resident)
     }
@@ -286,7 +281,7 @@ impl GodotWorldStreamingNode {
         match controller.accept_provider_event(event) {
             Ok(events) => {
                 for world_event in events {
-                    self.emit_world_event(world_event, Some(event.request_id));
+                    self.emit_world_event(world_event);
                 }
             }
             Err(error) => {
@@ -303,7 +298,7 @@ impl GodotWorldStreamingNode {
         }
 
         for event in events {
-            self.emit_world_event(event, None);
+            self.emit_world_event(event);
         }
     }
 
@@ -319,19 +314,14 @@ impl GodotWorldStreamingNode {
                 .signals()
                 .chunk_unload_requested()
                 .emit(request_id, chunk.x, chunk.y, chunk.z),
-            StreamRequestKind::CancelLoad | StreamRequestKind::CancelUnload => {}
         }
     }
 
-    fn emit_world_event(
-        &mut self,
-        event: WorldStreamingEvent,
-        request_id: Option<StreamRequestId>,
-    ) {
+    fn emit_world_event(&mut self, event: WorldStreamingEvent) {
         let chunk = event.chunk_id.coord;
         match event.kind {
             WorldStreamingEventKind::ProviderStarted => {
-                if let Some(request_id) = request_id {
+                if let Some(request_id) = event.request_id {
                     self.signals().chunk_provider_started().emit(
                         request_id_to_i64(request_id),
                         chunk.x,
@@ -341,7 +331,7 @@ impl GodotWorldStreamingNode {
                 }
             }
             WorldStreamingEventKind::ProviderCompleted => {
-                if let Some(request_id) = request_id {
+                if let Some(request_id) = event.request_id {
                     self.signals().chunk_provider_completed().emit(
                         request_id_to_i64(request_id),
                         chunk.x,
@@ -351,7 +341,7 @@ impl GodotWorldStreamingNode {
                 }
             }
             WorldStreamingEventKind::ProviderFailed => {
-                if let Some(request_id) = request_id {
+                if let Some(request_id) = event.request_id {
                     self.signals().chunk_provider_failed().emit(
                         request_id_to_i64(request_id),
                         chunk.x,
@@ -371,10 +361,8 @@ impl GodotWorldStreamingNode {
                     .emit(chunk.x, chunk.y, chunk.z);
             }
             WorldStreamingEventKind::LoadQueued
-            | WorldStreamingEventKind::LoadRequestCancelled
             | WorldStreamingEventKind::LoadRequested
             | WorldStreamingEventKind::UnloadQueued
-            | WorldStreamingEventKind::UnloadRequestCancelled
             | WorldStreamingEventKind::UnloadRequested => {}
         }
     }

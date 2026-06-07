@@ -8,8 +8,6 @@ pub struct StreamRequestId(pub u64);
 pub enum StreamRequestKind {
     Load,
     Unload,
-    CancelLoad,
-    CancelUnload,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

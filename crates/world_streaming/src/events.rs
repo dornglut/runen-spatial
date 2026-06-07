@@ -6,7 +6,6 @@ pub enum ProviderEventKind {
     Started,
     Completed,
     Failed,
-    Cancelled,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -19,14 +18,12 @@ pub struct ProviderEvent {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WorldStreamingEventKind {
     LoadQueued,
-    LoadRequestCancelled,
     LoadRequested,
     ProviderStarted,
     ProviderCompleted,
     ProviderFailed,
     Resident,
     UnloadQueued,
-    UnloadRequestCancelled,
     UnloadRequested,
     Unloaded,
 }
@@ -34,11 +31,28 @@ pub enum WorldStreamingEventKind {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct WorldStreamingEvent {
     pub chunk_id: ChunkId,
+    pub request_id: Option<StreamRequestId>,
     pub kind: WorldStreamingEventKind,
 }
 
 impl WorldStreamingEvent {
     pub fn new(chunk_id: ChunkId, kind: WorldStreamingEventKind) -> Self {
-        Self { chunk_id, kind }
+        Self {
+            chunk_id,
+            request_id: None,
+            kind,
+        }
+    }
+
+    pub fn with_request(
+        chunk_id: ChunkId,
+        request_id: StreamRequestId,
+        kind: WorldStreamingEventKind,
+    ) -> Self {
+        Self {
+            chunk_id,
+            request_id: Some(request_id),
+            kind,
+        }
     }
 }
