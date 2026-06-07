@@ -72,3 +72,6 @@ cargo run -p chunk_streaming_demo
 See [docs/roadmap.md](docs/roadmap.md) for the cross-repository milestone plan.
 The next required milestone is M0: harden `world_streaming` lifecycle
 correctness before serious Godot world work.
+
+For an executable `/goal` prompt, use
+[docs/full-roadmap-goal-prompt.md](docs/full-roadmap-goal-prompt.md).
