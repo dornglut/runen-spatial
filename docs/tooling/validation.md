@@ -24,9 +24,11 @@ The GitHub caller is intentionally minimal and read-only. It invokes the immutab
 
 ## Core and adapter toolchains
 
-The core framework declares Rust 1.93.0 as its initial MSRV. The optional Godot adapter is checked on the repository stable toolchain and is excluded from the MSRV proof. This prevents an optional platform dependency from silently changing the core compatibility contract.
+The core framework declares Rust 1.93.0 as its initial MSRV and inherits `unsafe_code = "forbid"`.
 
-A future adapter-specific MSRV claim requires direct evidence and an accepted issue.
+The optional Godot adapter is checked on the repository stable toolchain, does not declare the core MSRV as its own, and is excluded from the MSRV proof. Its manifest carries one explicit `unsafe_code = "allow"` exception because the Godot GDExtension entry point requires an unsafe trait implementation. Clippy warnings remain denied for the adapter, and the unsafe exception does not propagate into core packages.
+
+A future adapter-specific MSRV claim or broader unsafe boundary requires direct evidence and an accepted issue.
 
 ## File and dependency policy
 
