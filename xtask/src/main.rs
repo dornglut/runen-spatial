@@ -161,7 +161,6 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         "crates/chunking/Cargo.toml",
         "crates/world_streaming/Cargo.toml",
         "crates/world_core_prelude/Cargo.toml",
-        "adapters/godot_world_streaming/Cargo.toml",
         "demos/chunk_streaming_demo/Cargo.toml",
     ];
 
@@ -175,6 +174,18 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         ] {
             require_contains(relative, &manifest, required)?;
         }
+    }
+
+    let adapter_path = "adapters/godot_world_streaming/Cargo.toml";
+    let adapter = read_text(root, adapter_path)?;
+    for required in [
+        "rust-version.workspace = true",
+        "repository.workspace = true",
+        "publish.workspace = true",
+        "[lints.rust]\nunsafe_code = \"allow\"",
+        "[lints.clippy]\nall = { level = \"deny\", priority = -1 }",
+    ] {
+        require_contains(adapter_path, &adapter, required)?;
     }
 
     let xtask = read_text(root, "xtask/Cargo.toml")?;
