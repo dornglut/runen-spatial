@@ -100,9 +100,14 @@ fn validate_required_files(root: &Path) -> Result<(), String> {
         require_file(root, relative)?;
     }
 
-    for forbidden in ["docs/crate-boundaries.md", "docs/full-roadmap-goal-prompt.md"] {
+    for forbidden in [
+        "docs/crate-boundaries.md",
+        "docs/full-roadmap-goal-prompt.md",
+    ] {
         if root.join(forbidden).exists() {
-            return Err(format!("superseded or process-only file must be removed: {forbidden}"));
+            return Err(format!(
+                "superseded or process-only file must be removed: {forbidden}"
+            ));
         }
     }
 
@@ -191,7 +196,9 @@ fn validate_workflow(root: &Path) -> Result<(), String> {
         "79405c457b5b99d5cb9957c9bcdc475109e1e3bf",
     ] {
         if workflow.contains(retired) {
-            return Err(format!("{WORKFLOW_PATH} uses retired shared revision {retired}"));
+            return Err(format!(
+                "{WORKFLOW_PATH} uses retired shared revision {retired}"
+            ));
         }
     }
 
@@ -249,7 +256,10 @@ fn validate_repository_files(root: &Path) -> Result<(), String> {
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
         if metadata.file_type().is_symlink() {
-            return Err(format!("tracked repository symlink is forbidden: {}", path.display()));
+            return Err(format!(
+                "tracked repository symlink is forbidden: {}",
+                path.display()
+            ));
         }
         if is_authored_text(&path) && metadata.len() > MAX_AUTHORED_BYTES {
             return Err(format!(
@@ -355,7 +365,11 @@ fn validate_provenance(root: &Path) -> Result<(), String> {
         "private normalization",
         "not a complete full-history secret scan",
     ] {
-        require_contains("docs/provenance/repository-transfer.md", &provenance, required)?;
+        require_contains(
+            "docs/provenance/repository-transfer.md",
+            &provenance,
+            required,
+        )?;
     }
     Ok(())
 }
@@ -481,7 +495,9 @@ fn prove_clean_repository_state(root: &Path) -> Result<(), String> {
     if status.trim().is_empty() {
         Ok(())
     } else {
-        Err(format!("validation changed the tracked repository:\n{status}"))
+        Err(format!(
+            "validation changed the tracked repository:\n{status}"
+        ))
     }
 }
 
