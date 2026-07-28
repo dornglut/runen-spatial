@@ -8,6 +8,7 @@ members = [
   "crates/world_core_prelude",
   "adapters/godot_world_streaming",
   "demos/chunk_streaming_demo",
+  "xtask",
 ]
 
 default-members = [
@@ -21,7 +22,10 @@ default-members = [
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+rust-version = "1.93.0"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/dornglut/runen-spatial"
+publish = false
 
 [workspace.dependencies]
 chunking = { path = "crates/chunking" }
@@ -30,3 +34,9 @@ serde = { version = "1.0.228", features = ["derive"] }
 spatial = { path = "crates/spatial" }
 spatial_index = { path = "crates/spatial_index" }
 world_streaming = { path = "crates/world_streaming" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }

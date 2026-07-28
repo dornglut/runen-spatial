@@ -2,9 +2,13 @@
 name = "chunk_streaming_demo"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
-publish = false
+repository.workspace = true
+publish.workspace = true
 
 [dependencies]
-tile_topology = { path = "../../../grid/crates/tile_topology" }
 world_core_prelude = { path = "../../crates/world_core_prelude" }
+
+[lints]
+workspace = true

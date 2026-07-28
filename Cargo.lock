@@ -6,7 +6,6 @@ version = 4
 name = "chunk_streaming_demo"
 version = "0.1.0"
 dependencies = [
- "tile_topology",
  "world_core_prelude",
 ]
 
@@ -114,17 +113,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid_math"
-version = "0.1.0"
-
-[[package]]
-name = "grid_storage"
-version = "0.1.0"
-dependencies = [
- "grid_math",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -183,7 +171,7 @@ dependencies = [
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41d385c7d4ca58e59fc732af25c3983b67ac852c1a25000afe1175de458b67ad"
+checksum = "41d385c7d4ca58e59c8ecec5ed1156e7ad973e30c9133444b009462f8b09e06"
 dependencies = [
  "serde_derive",
 ]
@@ -225,18 +213,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tile_topology"
-version = "0.1.0"
-dependencies = [
- "grid_math",
- "grid_storage",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+checksum = "e6e4313cd5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "venial"
@@ -265,3 +245,7 @@ dependencies = [
  "chunking",
  "spatial",
 ]
+
+[[package]]
+name = "xtask"
+version = "0.0.0"

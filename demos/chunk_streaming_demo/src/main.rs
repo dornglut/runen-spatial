@@ -1,7 +1,3 @@
-use tile_topology::{
-    CellType, DenseGrid2D, GridCoord2, VisualTile, VisualTileDescriptor, VisualTileKind,
-    form_visual_tiles,
-};
 use world_core_prelude::{
     ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, GridPartitionConfig, ProviderEvent,
     ProviderEventKind, StreamRequest, StreamRequestKind, StreamingBudgets, StreamingFocus,
@@ -50,26 +46,6 @@ fn main() {
     for event in events {
         println!("  {:?} {:?}", event.kind, event.chunk_id.coord);
     }
-
-    let visuals = build_demo_chunk_visuals();
-    println!();
-    println!("Godot grid composition payload for reusable mesh assets:");
-    for (_, tile) in visuals
-        .iter_cells()
-        .filter(|(_, tile)| tile.is_occupied())
-        .take(12)
-    {
-        let descriptor = tile.descriptor();
-        let corner = tile.visual_corner_coord();
-        println!(
-            "  corner=({}, {}) asset_key={} rotation={} mask={:04b}",
-            corner.x(),
-            corner.y(),
-            mesh_asset_key(descriptor),
-            descriptor.rotation().degrees_cw(),
-            descriptor.mask().bits()
-        );
-    }
 }
 
 fn streaming_config() -> WorldStreamingConfig {
@@ -102,35 +78,4 @@ fn print_stream_request(request: &StreamRequest) {
         "  id={} kind={:?} chunk=({}, {}, {}) priority={:?}",
         request.request_id.0, request.kind, coord.x, coord.y, coord.z, request.priority
     );
-}
-
-fn build_demo_chunk_visuals() -> DenseGrid2D<VisualTile> {
-    let mut grid = DenseGrid2D::new(6, 6, CellType::Empty);
-
-    for x in 0..6 {
-        grid.set(GridCoord2::new(x, 0), CellType::Wall);
-        grid.set(GridCoord2::new(x, 5), CellType::Wall);
-    }
-    for y in 0..6 {
-        grid.set(GridCoord2::new(0, y), CellType::Wall);
-        grid.set(GridCoord2::new(5, y), CellType::Wall);
-    }
-    grid.set(GridCoord2::new(2, 2), CellType::Wall);
-    grid.set(GridCoord2::new(3, 2), CellType::Wall);
-    grid.set(GridCoord2::new(2, 3), CellType::Wall);
-
-    form_visual_tiles(&grid)
-}
-
-fn mesh_asset_key(descriptor: VisualTileDescriptor) -> String {
-    let rotation = descriptor.rotation().degrees_cw();
-    match descriptor.kind() {
-        VisualTileKind::Empty => "empty".to_string(),
-        VisualTileKind::Corner => format!("corner_{rotation}"),
-        VisualTileKind::Edge => format!("edge_{rotation}"),
-        VisualTileKind::T => format!("t_{rotation}"),
-        VisualTileKind::Diagonal => format!("diagonal_{rotation}"),
-        VisualTileKind::Full => "full".to_string(),
-        VisualTileKind::Debug => "debug".to_string(),
-    }
 }
