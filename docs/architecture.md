@@ -1,77 +1,291 @@
-# Architecture
+# RunenSpatial Architecture
 
-`spatial_streaming` is spatial addressing plus chunk residency and streaming
-lifecycle contracts only.
+## Mission
 
-It is not the world model.
+RunenSpatial is a standalone, host-neutral Rust framework for spatial identity, addressing, indexing, demand calculation, and content-agnostic chunk payload availability.
 
-It is not a terrain stack.
+It provides reusable mechanics. It does not define what a world contains, how products are generated, how a renderer forms an image, or how a host performs IO.
 
-It is not an engine runtime.
+## Architectural rule
 
-The repository name is intentionally stricter than `world_core` to reduce future
-creep. A reusable world may consume these crates, but this repository must not
-become the owner of world operations, field payloads, procedural generation,
-assets, ECS runtime state, networking replication, save formats, renderer
-resources, or editor behavior.
-
-## Current Tree
+One concept has one owner.
 
 ```text
-spatial_streaming/
-  Cargo.toml
-  README.md
-  crates/
-    spatial/
-    spatial_index/
-    chunking/
-    world_streaming/
-    world_core_prelude/
-  adapters/
-    godot_world_streaming/
-  demos/
-    chunk_streaming_demo/
-  docs/
-    architecture.md
-    crate-boundaries.md
-    spatial-model.md
-    chunking-model.md
-    streaming-lifecycle.md
-    godot-integration.md
-    grid-composition.md
-    roadmap.md
-    runenwerk-integration.md
+RunenSpatial
+    where spatial cells are
+    which spatial cells are desired
+    whether an opaque chunk payload is absent or resident
+
+Runenwerk
+    what world data means
+    which products are required
+    how products are generated, invalidated, certified, activated, saved, and replicated
+
+RunenRender
+    which prepared render products and acceleration caches are resident
+    how visibility, interaction, lighting, transport, reconstruction, and image output work
+
+RunenGPU
+    how logical GPU resources and work are realized, executed, completed, and retired
 ```
 
-The adapter and demo are workspace members but intentionally outside
-`default-members`, so the normal build surface remains the reusable core.
+No universal residency manager spans these layers.
 
-## Dependency Direction
+## Owned concepts
+
+RunenSpatial owns:
+
+- `WorldId` as an opaque spatial-namespace identifier;
+- chunk and region coordinates and identities;
+- global and frame-local positions;
+- explicit spatial frames and conversion mathematics;
+- grid partitioning;
+- hierarchical address relationships;
+- clipmap and ring address mappings;
+- minimal spatial bounds and neutral spatial hashes;
+- generic spatial-index contracts;
+- deterministic multi-source spatial demand;
+- content-agnostic payload load/unload lifecycle;
+- request identities, budgets, correlation, outcomes, and diagnostics.
+
+## Excluded concepts
+
+RunenSpatial must not own:
+
+- signed-distance functions or sparse field products;
+- world edits, dirty regions, product generations, build queues, procgen, simulation, replication, or save formats;
+- collision certification, navigation readiness, visual fallback, gameplay locks, or ECS activation;
+- renderer providers, page tables, render caches, materials, lighting, image history, or presentation;
+- GPU adapters, devices, queues, resources, shaders, pipelines, command submission, or completion;
+- async executors, threads, channels, filesystem/network IO, task handles, payload caches, retry backoff, or application recovery policy;
+- Godot scenes, nodes, assets, meshes, materials, or project-specific signals.
+
+## Package dependency direction
+
+The provisional target packages are:
 
 ```text
-spatial
-spatial_index -> spatial
-chunking -> spatial
-world_streaming -> spatial, chunking
-world_core_prelude -> spatial, spatial_index, chunking, world_streaming
+runen-spatial
 
-optional:
-godot_world_streaming -> godot, spatial, chunking, world_streaming
-chunk_streaming_demo -> world_core_prelude, Crystonix/grid tile_topology
+runen-spatial-index
+    -> runen-spatial
+
+runen-spatial-demand
+    -> runen-spatial
+
+runen-spatial-streaming
+    -> runen-spatial
+    -> runen-spatial-demand
 ```
 
-No core crate may depend on Godot, Runenwerk engine crates, ECS runtime crates,
-`world_ops`, `world_sdf`, `procgen`, `product`, rendering, editor, or apps.
+`runen-spatial` is the foundational dependency and must not depend on the other packages.
 
-## Provider Ownership Model
+`runen-spatial-index` is retained only if its audit proves an independent reusable contract and consumer value.
 
-The `world_streaming` crate uses request/event ownership:
+`runen-spatial-demand` calculates desired spatial coverage. It performs no IO and owns no actual payload availability.
 
-1. `world_streaming` emits `StreamRequest`.
-2. The host, adapter, engine, or app performs loading/unloading.
-3. The host reports `ProviderEvent` back.
-4. `world_streaming` advances lifecycle state and emits deterministic events.
+`runen-spatial-streaming` reconciles effective demand with opaque payload availability. It does not know product types or perform backend work.
 
-The core must not call provider code directly in the first extraction. It must
-not own async runtimes, worker threads, filesystem IO, asset catalogs, Godot
-nodes, renderer uploads, mesh generation, or SDF payload loading.
+No broad prelude package is part of the target architecture.
+
+## Address model
+
+### Spatial namespaces
+
+A `WorldId` identifies one independent spatial coordinate namespace. It does not confer authority over a Runenwerk world model or application state.
+
+Every stable chunk and region identity includes the namespace identifier.
+
+### Stable coordinates
+
+Target stable chunk and region coordinates use signed 64-bit components.
+
+Stable coordinates:
+
+- support negative values;
+- are independent of camera or simulation origins;
+- use checked arithmetic;
+- are suitable as runtime map keys;
+- do not imply a stable serialized or wire schema without a separately accepted version contract.
+
+The framework describes this as a large-world address model, not mathematical infinity.
+
+### Position tiers
+
+```text
+stable chunk/region address
+    signed integer identity
+
+global metric position
+    finite f64 with explicit namespace/frame context
+
+frame-local position
+    finite f32 relative to an explicit frame
+```
+
+Frame-local positions are not stable identities. Hosts decide when to rebase and how systems observe rebasing; RunenSpatial owns only frame definitions and checked conversions.
+
+## Hierarchy model
+
+Hierarchy uses the convention:
+
+```text
+level 0 = finest
+larger level = coarser
+```
+
+For scale factor `s >= 2`:
+
+```text
+parent(level, coord)
+    = (level + 1, floor_div(coord, s))
+
+children(level, coord)
+    = level - 1 cells covering
+      [coord * s, coord * s + (s - 1)] on every axis
+```
+
+All arithmetic is checked. Tests must prove containment, complete child coverage, negative-coordinate behavior, and level-bound handling.
+
+Clipmaps and rings are address mappings only. Complete residency, reuse-generation, synchronization, cache, and GPU systems belong to their consumers.
+
+## Demand model
+
+A demand source publishes its current desired spatial coverage. The framework combines active source snapshots into one deterministic effective demand set.
+
+Neutral demand facts may include:
+
+- chunk identity;
+- source identity;
+- priority;
+- retention requirement;
+- explicit pinning.
+
+The framework must not interpret consumer purpose. Terms such as collision, rendering, navigation, replication, editor preview, or offline generation remain host-owned.
+
+### Deterministic composition
+
+- any active source may make a chunk desired;
+- priority has a documented total ordering;
+- equal priorities use stable source and chunk identities as tie breakers;
+- retention uses the strongest active requirement;
+- replacing or removing one source affects only that source's contribution;
+- queued priorities refresh whenever effective demand changes, even if membership does not;
+- identical snapshots produce identical effective output.
+
+## Streaming model
+
+Streaming reconciles effective spatial demand with opaque payload availability. It emits requests; a host backend performs work and reports events.
+
+```text
+RunenSpatial Streaming
+    emits StreamRequest
+
+host/backend
+    performs load or unload
+
+host/backend
+    reports StreamBackendEvent
+
+RunenSpatial Streaming
+    updates deterministic state and emits diagnostics/events
+```
+
+Core does not require a backend trait or runtime.
+
+### Orthogonal state
+
+Each chunk stream record separates:
+
+```text
+desired
+availability
+operation
+last failure
+```
+
+Target concepts:
+
+```text
+availability
+    Absent
+    Resident
+
+operation
+    Idle
+    LoadQueued
+    LoadIssued
+    Loading
+    UnloadQueued
+    UnloadIssued
+    Unloading
+
+failure
+    LoadFailed
+    UnloadFailed
+    ResidentPayloadFailed
+```
+
+`Resident` means only that the backend completed an opaque payload-availability transition. It does not mean a product is current, certified, active, rendered, replicated, or saved.
+
+### Required invariants
+
+- one active transition request per chunk;
+- request identity and chunk identity must match;
+- unknown, stale, duplicate, malformed, and mismatched events cannot silently mutate state;
+- load failure leaves availability absent;
+- unload failure leaves availability resident;
+- queued work survives unchanged demand and drains under nonzero budgets;
+- request ID exhaustion is explicit;
+- demand reversal during active work is deterministic;
+- retries are explicit and policy-free;
+- cancellation and timeout are excluded until complete backend contracts exist.
+
+## Consumer integration
+
+### Runenwerk
+
+Runenwerk translates players, editors, simulation, networking, and product requirements into neutral RunenSpatial demand. It owns backend selection, world products, generation, invalidation, retries, recovery, activation, and persistence.
+
+Its mixed engine chunk lifecycle must be decomposed rather than copied into RunenSpatial:
+
+| Dimension | Owner |
+| --- | --- |
+| spatial demand | RunenSpatial Demand |
+| opaque payload availability | RunenSpatial Streaming |
+| dirty regions and invalidation | Runenwerk `world_ops` |
+| product build and generation | owning Runenwerk product domain |
+| gameplay/runtime activation | Runenwerk engine |
+| render-cache residency | RunenRender |
+| GPU realization | RunenGPU |
+
+### Godot World Lab
+
+Godot World Lab may use an adapter to convert positions/configuration and report backend events. It owns nodes, scenes, assets, visual realization, experimental generation, caches, and debug UI.
+
+The current adapter remains experimental until reuse and lifecycle behavior are audited.
+
+### RunenRender and RunenGPU
+
+RunenRender may consume prepared spatial summaries or adapters, but does not own authoritative world payload availability.
+
+RunenGPU has no dependency on RunenSpatial. Generic GPU realization and execution remain independent of world meaning.
+
+## Extraction and cutover rule
+
+RunenSpatial becomes authoritative only through a clean consumer cutover.
+
+For every migrated component:
+
+1. accept and validate the standalone contract;
+2. add the exact dependency in Runenwerk;
+3. migrate all real consumers in scope;
+4. preserve Runenwerk-specific meaning in Runenwerk-owned adapters;
+5. delete the corresponding internal duplicate in the same accepted slice;
+6. prove no forwarding crate, copied source, source include, branch dependency, or submodule remains.
+
+Historical source is provenance evidence, not continuing authority.
+
+## Architecture stop conditions
+
+A new package, stable serialization format, backend trait, concurrency contract, compatibility layer, host-purpose enum, or cross-repository abstraction requires a separately accepted issue when it introduces a new ownership or compatibility boundary.
