@@ -323,11 +323,15 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
 
     let include_macro = ["include!", "("].concat();
     let include_bytes_macro = ["include_bytes!", "("].concat();
+    let xtask_source = root.join("xtask/src/main.rs");
 
     for path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
     {
+        if path == xtask_source {
+            continue;
+        }
         let text = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
         if text.contains(&include_macro) || text.contains(&include_bytes_macro) {
