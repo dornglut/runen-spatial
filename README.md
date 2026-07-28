@@ -1,13 +1,8 @@
 # RunenSpatial
 
-RunenSpatial is a host-neutral Rust framework for spatial identities,
-addressing, indexing, demand calculation, and content-agnostic chunk
-availability control.
+RunenSpatial is a host-neutral Rust framework for spatial identities, addressing, indexing, deterministic demand, and content-agnostic chunk availability control.
 
-The repository was transferred to Dornglut with commit history preserved. It is
-private while its governance, package identity, provenance, large-world
-contracts, demand model, lifecycle semantics, conformance, and release policy
-are normalized.
+The repository was transferred to Dornglut with commit history preserved. It remains private while package identity, correctness, conformance, and release policy are completed.
 
 ## Ownership boundary
 
@@ -15,24 +10,18 @@ RunenSpatial may own:
 
 - spatial namespace, chunk, and region identities;
 - global and frame-local coordinate mathematics;
-- grid, hierarchy, clipmap, ring-mapping, bounds, and neutral spatial-hash
-  primitives;
+- grid, hierarchy, clipmap, ring-mapping, bounds, and neutral spatial-hash primitives;
 - generic spatial indexes;
 - deterministic spatial demand;
-- abstract load/unload lifecycle for one host-defined availability class per
-  controller, including request correlation, budgets, transition outcomes, and
-  diagnostics.
+- abstract load/unload lifecycle for one host-defined availability class per controller, including correlation, budgets, transition outcomes, and diagnostics.
 
-It does not own world edits, SDF or other product payloads, procgen, simulation,
-ECS activation, replication, save formats, renderer caches, image formation,
-GPU resources, IO, async runtime ownership, application recovery policy, a
-universal product registry, or Godot scene and asset ownership.
+It does not own world edits, SDF or other product payloads, procgen, simulation, ECS activation, replication, save formats, renderer caches, image formation, GPU resources, IO, async runtime ownership, application recovery policy, a universal product registry, or Godot scene and asset ownership.
 
-See [the canonical architecture](docs/architecture.md).
+Start with [Architecture](ARCHITECTURE.md), [Agent Guide](AGENTS.md), and [Testing](TESTING.md).
 
-## Current transferred workspace
+## Current workspace
 
-The current source topology remains unchanged during the decision phase:
+The transferred package names remain unchanged during governance normalization:
 
 ```text
 crates/spatial
@@ -44,86 +33,42 @@ adapters/godot_world_streaming
 demos/chunk_streaming_demo
 ```
 
-The target Runen-family names and final package set are not yet implemented. The
-provisional mapping and package decision gates are documented in
-[package boundaries](docs/package-boundaries.md).
+The provisional Runen-family package map and decision gates are documented in [package boundaries](docs/package-boundaries.md). `world_core_prelude` is accepted for later deletion; it is not the target ordinary entry point.
 
-`world_core_prelude` is accepted for later deletion; it is not the target
-ordinary entry point.
-
-The Godot adapter remains optional, non-default, experimental, and
-non-publishable pending an ownership and lifecycle audit.
+The Godot adapter remains optional, non-default, experimental, and non-publishable pending an ownership and lifecycle audit.
 
 ## Current maturity
 
-The transferred code provides a deterministic single-focus demand and
-streaming-lifecycle baseline with spatial addressing and index primitives.
+The current code provides a deterministic single-focus demand and streaming-lifecycle baseline with spatial addressing and index primitives.
 
-Implemented evidence includes:
+Implemented evidence includes negative-coordinate partitioning, planar and axis-aligned three-dimensional desired chunk sets, load/unload hysteresis, persistent budgeted request queues, request correlation, deterministic reversal behavior, explicit retry, stale-event rejection, and an optional Godot adapter.
 
-- negative-coordinate partitioning;
-- planar and axis-aligned three-dimensional desired chunk sets;
-- load/unload hysteresis;
-- persistent budgeted request queues;
-- request and chunk correlation;
-- deterministic load/unload reversal behavior;
-- explicit retry and stale-event rejection;
-- an optional Godot adapter and demo.
+Known limitations include contradictory hierarchy semantics, incomplete large-world and overflow contracts, single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover.
 
-Known limitations include:
+RunenSpatial is not yet a production-complete infinite-world or multi-consumer streaming framework.
 
-- contradictory hierarchy level/parent semantics;
-- incomplete large-world, overflow, rebasing, persistence, and precision
-  contracts;
-- single-source demand and stale queued-priority risk;
-- one combined lifecycle with a universal `Failed` state;
-- inherited resident-payload failure reporting that crosses the target
-  transition boundary;
-- saturating request-ID allocation;
-- unaudited production characteristics for the spatial index and Godot adapter;
-- no completed full-history release-provenance audit;
-- no completed Runenwerk consumer cutover.
+## Authority and roadmap
 
-RunenSpatial must therefore not yet be described as a production-complete
-infinite-world or multi-consumer streaming framework.
-
-## Planning authority
-
-- [Parent outcome: establish standalone RunenSpatial authority](https://github.com/dornglut/runen-spatial/issues/1)
-- [Current decision phase: investigate the extraction boundary](https://github.com/dornglut/runen-spatial/issues/2)
-- [Extraction-boundary investigation](docs/investigations/runenspatial-extraction-boundary.md)
-- [Architecture](docs/architecture.md)
+- [Canonical architecture](docs/architecture.md)
 - [Package boundaries](docs/package-boundaries.md)
+- [Transfer provenance](docs/provenance/repository-transfer.md)
+- [Validation contract](docs/tooling/validation.md)
 - [Durable roadmap](docs/roadmap.md)
+- [Parent outcome issue](https://github.com/dornglut/runen-spatial/issues/1)
+- [Current governance and validation issue](https://github.com/dornglut/runen-spatial/issues/4)
 
-GitHub issues own accepted live work. Pull requests and exact-head CI own
-implementation evidence. Durable documents do not track active branch heads,
-pull-request inventories, or workflow runs.
+Issues own accepted live work. Pull requests and exact-head CI own implementation evidence. Durable documents do not track active branch, PR, SHA, or workflow inventories.
 
 ## Validation
 
-The transferred baseline currently supports focused Cargo commands such as:
+Run the complete maintained validation surface:
 
 ```text
-cargo fmt --all --check
-cargo test --workspace
+cargo validate
 ```
 
-The accepted target is one repository-owned `cargo validate` command invoked by
-Dornglut's immutable shared Rust-validation workflow. That authority will be
-added in a separate behavior-preserving governance issue after the decision
-phase is accepted.
-
-Optional adapter and demo validation remain separate until their permanent
-ownership and toolchain contracts are decided.
+The command is invoked unchanged by Dornglut's immutable shared Rust-validation workflow. Focused commands are useful during editing but are not substitute merge evidence.
 
 ## Runenwerk status
 
-Runenwerk has not completed a dependency cutover to this repository. It still
-contains duplicate internal spatial, demand, and streaming source and a mixed
-engine chunk lifecycle.
-
-A future Runenwerk cutover will be separately authorized and will proceed
-component by component. Each accepted slice must migrate real consumers and
-delete the corresponding duplicate authority without leaving forwarding crates
-as the final state.
+Runenwerk has not completed a dependency cutover. Future cutover work will be separately authorized and performed component by component, with real consumer migration and immediate duplicate-source deletion.

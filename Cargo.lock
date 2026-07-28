@@ -6,7 +6,6 @@ version = 4
 name = "chunk_streaming_demo"
 version = "0.1.0"
 dependencies = [
- "tile_topology",
  "world_core_prelude",
 ]
 
@@ -114,17 +113,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid_math"
-version = "0.1.0"
-
-[[package]]
-name = "grid_storage"
-version = "0.1.0"
-dependencies = [
- "grid_math",
-]
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -225,14 +213,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tile_topology"
-version = "0.1.0"
-dependencies = [
- "grid_math",
- "grid_storage",
-]
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -265,3 +245,7 @@ dependencies = [
  "chunking",
  "spatial",
 ]
+
+[[package]]
+name = "xtask"
+version = "0.0.0"

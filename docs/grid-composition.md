@@ -1,26 +1,24 @@
-# Grid Composition
+# Host Composition
 
-`godot_grid` remains in `Crystonix/grid`. It handles per-chunk tile and topology
-visual mapping. `spatial_streaming` decides which chunks should be resident and
-which lifecycle requests/events are active.
+RunenSpatial owns neutral spatial demand and availability transitions. A host owns world content, generation, assets, scene realization, and product readiness.
 
-## Composition Flow
+## Composition flow
 
-1. `godot_world_streaming` emits `chunk_load_requested(request_id, x, y, z)`.
-2. Godot host code creates or loads an application-owned chunk root.
-3. Host code builds or fetches the chunk's logic grid.
-4. Host code calls `godot_grid` to form visual tile descriptors.
-5. `godot_grid` returns asset keys, masks, rotations, and visual coordinates.
-6. Host code maps asset keys such as `corner_0`, `edge_90`, or `full` to
-   reusable Blender-exported mesh assets.
-7. Host code instances those meshes under the chunk root at
-   `chunk_world_origin + tile_offset`.
-8. Host code reports provider completion with the same `request_id`.
-9. Unload events cause host code to detach or free the chunk root and report
-   provider completion for the unload request.
+1. A host publishes neutral spatial demand.
+2. RunenSpatial emits a load or unload request with request and chunk identity.
+3. The host starts the corresponding backend operation.
+4. The host reports the started event.
+5. The host loads, generates, or releases its opaque availability payload.
+6. The host reports completion or failure with the same request and chunk identity.
+7. RunenSpatial updates deterministic transition state and emits diagnostics/events.
+8. Product generation, visual realization, physics, gameplay activation, persistence, and retry policy remain separate host concerns.
 
-`spatial_streaming` does not know about tile masks or Blender meshes.
+## Grid and Godot consumers
 
-`godot_grid` does not know about streaming budgets or lifecycle state.
+A Godot World Lab or grid-oriented consumer may combine RunenSpatial with its own topology, generation, mesh, material, and node systems. Those consumer systems do not become RunenSpatial authority.
 
-The Godot host composes both adapters.
+The optional Godot adapter translates values and events only. It does not own world nodes, tile descriptors, assets, generation rules, caches, or readiness policy.
+
+## Boundary rule
+
+RunenSpatial decides neutral desired coverage and availability transitions. The host decides what an available chunk means and how it is realized.

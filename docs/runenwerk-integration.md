@@ -1,64 +1,46 @@
 # Runenwerk Integration
 
-Runenwerk feature integration is deferred until the Godot world lab proves the
-streaming and visual slice end to end. The existing Runenwerk wrapper migration
-is a compatibility bridge only; it is not the start of product/runtime
-integration.
+Runenwerk has not completed a dependency cutover to RunenSpatial. The repositories currently contain duplicate spatial, demand, and streaming authority, and Runenwerk still owns a mixed engine chunk lifecycle.
 
-## Migration Status
+This document defines the future integration boundary only. Live execution is owned by repository issues.
 
-1. `domain/spatial` remains the Runenwerk dependency name and re-exports
-   `spatial_streaming/crates/spatial`.
-2. `domain/spatial_index` remains the Runenwerk dependency name and re-exports
-   `spatial_streaming/crates/spatial_index`.
-3. `domain/chunking` remains the Runenwerk dependency name and re-exports
-   `spatial_streaming/crates/chunking`.
-4. The wrapper packages are versioned separately from the extracted packages so
-   Cargo can represent both packages in one lockfile during the transition.
-5. `godot_chunking_addon` still compiles against the wrappers. Replacing it
-   with `godot_world_streaming` is deferred until the Godot lab proves the
-   streaming-only, generated-grid, visual-descriptor, MultiMesh, unload, cache,
-   and dirty-update path.
+## Preconditions
 
-## Deferred Feature Integration
+Do not create the Runenwerk cutover parent until the standalone component being consumed has:
 
-Do not bring the Godot lab result back into Runenwerk until the lab has proven:
+- an accepted public contract;
+- repository-owned validation and exact-head CI;
+- documented ownership and exclusions;
+- conformance evidence;
+- no hidden dependency on Runenwerk or a sibling checkout.
 
-- streaming debug boxes;
-- deterministic chunk-local generation;
-- descriptor conversion through `godot_grid`;
-- custom MultiMesh chunk visuals;
-- unload and pooling behavior;
-- host-owned async provider behavior;
-- optional cache/save behavior if it exists;
-- dirty-cell incremental updates.
+## Cutover order
 
-Until then, Runenwerk should only consume the compatibility wrappers needed to
-avoid duplicate local spatial/chunking implementations.
+1. Spatial identities and coordinate mathematics.
+2. Spatial indexes, if the index package survives its audit.
+3. Spatial demand.
+4. Streaming lifecycle.
+5. Decomposition of Runenwerk's mixed engine lifecycle.
 
-## Remaining Cleanup
+Each cutover slice must add the accepted dependency, migrate every real consumer in scope, preserve Runenwerk-owned meaning in Runenwerk, and delete the corresponding duplicate source in the same accepted change.
 
-Remove duplicated Runenwerk source modules only after the wrapper migration is
-accepted and downstream consumers no longer need local fallback source history.
+Forwarding crates, copied modules, source includes, branch dependencies, external paths, and submodules are not accepted as the final state.
 
-## Reference-Only Sources
+## Ownership retained by Runenwerk
 
-The `world_streaming` implementation may read Runenwerk engine lifecycle code
-for context, but must not mechanically extract from it. These concepts stay in
-Runenwerk:
+Runenwerk continues to own:
 
-- dirty reasons;
-- chunk revisions and build generations;
-- world build queues;
-- SDF payload formation;
-- render cache invalidation;
-- ECS resources and systems;
-- networking replication state.
+- world edits and dirty regions;
+- product demand and build generations;
+- SDF and other world-product payloads;
+- procgen, simulation, networking, and persistence;
+- collision certification and visual fallback policy;
+- ECS and gameplay activation;
+- retries, degradation, and application recovery;
+- renderer preparation and host backend selection.
 
-## Validation Before Future Integration
+RunenSpatial owns only neutral spatial mechanics and one host-defined availability class per streaming controller.
 
-- `cargo test` in `spatial_streaming`.
-- Runenwerk checks for current spatial/chunking consumers.
-- Adapter checks only after the Godot adapter exists.
-- No migration step should widen `spatial_streaming` to absorb `world_ops`,
-  `world_sdf`, `procgen`, `product`, engine, editor, or apps.
+## Validation
+
+Every cutover requires standalone RunenSpatial validation, exact dependency identity, full Runenwerk validation, duplicate-authority guards, and accepted-main push evidence in both repositories where applicable.

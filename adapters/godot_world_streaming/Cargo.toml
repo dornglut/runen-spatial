@@ -3,7 +3,8 @@ name = "godot_world_streaming"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
+repository.workspace = true
+publish.workspace = true
 
 [lib]
 crate-type = ["rlib", "cdylib"]
@@ -13,3 +14,9 @@ chunking.workspace = true
 godot.workspace = true
 spatial.workspace = true
 world_streaming.workspace = true
+
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
