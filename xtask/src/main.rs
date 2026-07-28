@@ -179,13 +179,17 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     let adapter_path = "adapters/godot_world_streaming/Cargo.toml";
     let adapter = read_text(root, adapter_path)?;
     for required in [
-        "rust-version.workspace = true",
         "repository.workspace = true",
         "publish.workspace = true",
         "[lints.rust]\nunsafe_code = \"allow\"",
         "[lints.clippy]\nall = { level = \"deny\", priority = -1 }",
     ] {
         require_contains(adapter_path, &adapter, required)?;
+    }
+    if adapter.contains("rust-version") {
+        return Err(format!(
+            "{adapter_path} must not claim the core MSRV until adapter-specific proof exists"
+        ));
     }
 
     let xtask = read_text(root, "xtask/Cargo.toml")?;
