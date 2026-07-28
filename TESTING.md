@@ -18,6 +18,6 @@ cargo validate
 
 Run focused commands while editing, but do not substitute them for the complete validation authority before review or merge. GitHub Actions invokes the same repository-owned command through the immutable Dornglut shared Rust workflow.
 
-The optional Godot adapter is checked on stable Rust. The declared Rust 1.93.0 core compatibility command excludes the adapter so an optional platform dependency cannot silently raise the core MSRV.
+The core packages inherit Rust 1.93.0 and `unsafe_code = "forbid"`. The optional Godot adapter is checked on stable Rust, makes no adapter-specific MSRV claim, and carries one explicit `unsafe_code = "allow"` exception because Godot's GDExtension entry point requires an unsafe trait implementation. The exception does not propagate into core packages.
 
 See [the detailed validation contract](docs/tooling/validation.md).
