@@ -16,5 +16,8 @@ godot.workspace = true
 spatial.workspace = true
 world_streaming.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
