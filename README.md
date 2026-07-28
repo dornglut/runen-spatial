@@ -1,8 +1,13 @@
 # RunenSpatial
 
-RunenSpatial is a host-neutral Rust framework for spatial identities, addressing, indexing, demand calculation, and content-agnostic chunk payload availability.
+RunenSpatial is a host-neutral Rust framework for spatial identities,
+addressing, indexing, demand calculation, and content-agnostic chunk
+availability control.
 
-The repository was transferred to Dornglut with history preserved. It is private while its governance, package identity, large-world contracts, demand model, lifecycle semantics, conformance, and release policy are normalized.
+The repository was transferred to Dornglut with commit history preserved. It is
+private while its governance, package identity, provenance, large-world
+contracts, demand model, lifecycle semantics, conformance, and release policy
+are normalized.
 
 ## Ownership boundary
 
@@ -10,12 +15,18 @@ RunenSpatial may own:
 
 - spatial namespace, chunk, and region identities;
 - global and frame-local coordinate mathematics;
-- grid, hierarchy, clipmap, ring-mapping, bounds, and neutral spatial-hash primitives;
+- grid, hierarchy, clipmap, ring-mapping, bounds, and neutral spatial-hash
+  primitives;
 - generic spatial indexes;
 - deterministic spatial demand;
-- abstract payload load/unload lifecycle, request correlation, budgets, outcomes, and diagnostics.
+- abstract load/unload lifecycle for one host-defined availability class per
+  controller, including request correlation, budgets, transition outcomes, and
+  diagnostics.
 
-It does not own world edits, SDF or other product payloads, procgen, simulation, ECS activation, replication, save formats, renderer caches, image formation, GPU resources, IO, async runtime ownership, application recovery policy, or Godot scene and asset ownership.
+It does not own world edits, SDF or other product payloads, procgen, simulation,
+ECS activation, replication, save formats, renderer caches, image formation,
+GPU resources, IO, async runtime ownership, application recovery policy, a
+universal product registry, or Godot scene and asset ownership.
 
 See [the canonical architecture](docs/architecture.md).
 
@@ -33,15 +44,20 @@ adapters/godot_world_streaming
 demos/chunk_streaming_demo
 ```
 
-The target Runen-family names and final package set are not yet implemented. The provisional mapping and package decision gates are documented in [package boundaries](docs/package-boundaries.md).
+The target Runen-family names and final package set are not yet implemented. The
+provisional mapping and package decision gates are documented in
+[package boundaries](docs/package-boundaries.md).
 
-`world_core_prelude` is accepted for later deletion; it is not the target ordinary entry point.
+`world_core_prelude` is accepted for later deletion; it is not the target
+ordinary entry point.
 
-The Godot adapter remains optional, non-default, experimental, and non-publishable pending an ownership and lifecycle audit.
+The Godot adapter remains optional, non-default, experimental, and
+non-publishable pending an ownership and lifecycle audit.
 
 ## Current maturity
 
-The transferred code provides a deterministic single-focus demand and streaming-lifecycle baseline with spatial addressing and index primitives.
+The transferred code provides a deterministic single-focus demand and
+streaming-lifecycle baseline with spatial addressing and index primitives.
 
 Implemented evidence includes:
 
@@ -57,14 +73,19 @@ Implemented evidence includes:
 Known limitations include:
 
 - contradictory hierarchy level/parent semantics;
-- incomplete large-world, overflow, rebasing, persistence, and precision contracts;
+- incomplete large-world, overflow, rebasing, persistence, and precision
+  contracts;
 - single-source demand and stale queued-priority risk;
 - one combined lifecycle with a universal `Failed` state;
+- inherited resident-payload failure reporting that crosses the target
+  transition boundary;
 - saturating request-ID allocation;
 - unaudited production characteristics for the spatial index and Godot adapter;
+- no completed full-history release-provenance audit;
 - no completed Runenwerk consumer cutover.
 
-RunenSpatial must therefore not yet be described as a production-complete infinite-world or multi-consumer streaming framework.
+RunenSpatial must therefore not yet be described as a production-complete
+infinite-world or multi-consumer streaming framework.
 
 ## Planning authority
 
@@ -75,7 +96,9 @@ RunenSpatial must therefore not yet be described as a production-complete infini
 - [Package boundaries](docs/package-boundaries.md)
 - [Durable roadmap](docs/roadmap.md)
 
-GitHub issues own accepted live work. Pull requests and exact-head CI own implementation evidence. Durable documents do not track active branch heads, pull-request inventories, or workflow runs.
+GitHub issues own accepted live work. Pull requests and exact-head CI own
+implementation evidence. Durable documents do not track active branch heads,
+pull-request inventories, or workflow runs.
 
 ## Validation
 
@@ -86,12 +109,21 @@ cargo fmt --all --check
 cargo test --workspace
 ```
 
-The accepted target is one repository-owned `cargo validate` command invoked by Dornglut's immutable shared Rust-validation workflow. That authority will be added in a separate behavior-preserving governance issue after the decision phase is accepted.
+The accepted target is one repository-owned `cargo validate` command invoked by
+Dornglut's immutable shared Rust-validation workflow. That authority will be
+added in a separate behavior-preserving governance issue after the decision
+phase is accepted.
 
-Optional adapter and demo validation remain separate until their permanent ownership and toolchain contracts are decided.
+Optional adapter and demo validation remain separate until their permanent
+ownership and toolchain contracts are decided.
 
 ## Runenwerk status
 
-Runenwerk has not completed a dependency cutover to this repository. It still contains duplicate internal spatial, demand, and streaming source and a mixed engine chunk lifecycle.
+Runenwerk has not completed a dependency cutover to this repository. It still
+contains duplicate internal spatial, demand, and streaming source and a mixed
+engine chunk lifecycle.
 
-A future Runenwerk cutover will be separately authorized and will proceed component by component. Each accepted slice must migrate real consumers and delete the corresponding duplicate authority without leaving forwarding crates as the final state.
+A future Runenwerk cutover will be separately authorized and will proceed
+component by component. Each accepted slice must migrate real consumers and
+delete the corresponding duplicate authority without leaving forwarding crates
+as the final state.
