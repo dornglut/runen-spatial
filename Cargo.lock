@@ -20,7 +20,7 @@ dependencies = [
 name = "gdextension-api"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58ad9a3d877add34a2d1d92842ebd56928f61bd52e0fac4f04fc8b3731b0437"
+checksum = "58ad9a3d877c77834a2d1d92842ebd56928f61bd52e0fac4f04fc8b3731b0437"
 
 [[package]]
 name = "glam"
