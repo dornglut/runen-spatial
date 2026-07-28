@@ -269,7 +269,15 @@ fn is_authored_text(path: &Path) -> bool {
     }
     if matches!(
         path.file_name().and_then(OsStr::to_str),
-        Some("README.md" | "AGENTS.md" | "ARCHITECTURE.md" | "TESTING.md" | "SECURITY.md" | "LICENSE-MIT" | "LICENSE-APACHE")
+        Some(
+            "README.md"
+                | "AGENTS.md"
+                | "ARCHITECTURE.md"
+                | "TESTING.md"
+                | "SECURITY.md"
+                | "LICENSE-MIT"
+                | "LICENSE-APACHE"
+        )
     ) {
         return true;
     }
@@ -313,13 +321,16 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
         return Err("demo must not depend on an external sibling checkout".to_owned());
     }
 
+    let include_macro = ["include!", "("].concat();
+    let include_bytes_macro = ["include_bytes!", "("].concat();
+
     for path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
     {
         let text = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        if text.contains("include!(") || text.contains("include_bytes!(") {
+        if text.contains(&include_macro) || text.contains(&include_bytes_macro) {
             return Err(format!(
                 "source include authority requires explicit review: {}",
                 path.display()
@@ -404,14 +415,28 @@ fn markdown_targets(text: &str) -> Vec<&str> {
 }
 
 fn run_validation_commands(root: &Path) -> Result<(), String> {
-    run(root, "cargo", &["metadata", "--format-version", "1", "--locked", "--no-deps"])?;
+    run(
+        root,
+        "cargo",
+        &["metadata", "--format-version", "1", "--locked", "--no-deps"],
+    )?;
     run(root, "cargo", &["fmt", "--all", "--", "--check"])?;
     run(
         root,
         "cargo",
-        &["test", "--workspace", "--exclude", "godot_world_streaming", "--locked"],
+        &[
+            "test",
+            "--workspace",
+            "--exclude",
+            "godot_world_streaming",
+            "--locked",
+        ],
     )?;
-    run(root, "cargo", &["check", "--workspace", "--all-targets", "--locked"])?;
+    run(
+        root,
+        "cargo",
+        &["check", "--workspace", "--all-targets", "--locked"],
+    )?;
     run(
         root,
         "cargo",
@@ -522,7 +547,10 @@ fn walk_directory(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) -> Re
             .strip_prefix(root)
             .map_err(|error| format!("failed to relativize {}: {error}", path.display()))?;
         if matches!(
-            relative.components().next().and_then(|component| component.as_os_str().to_str()),
+            relative
+                .components()
+                .next()
+                .and_then(|component| component.as_os_str().to_str()),
             Some(".git" | "target")
         ) {
             continue;
