@@ -544,12 +544,11 @@ fn replacement_removal_and_source_local_retention_have_complete_snapshot_semanti
     assert!(!coords(&planner).contains(&ChunkCoord3 { x: 0, y: 0, z: 0 }));
     assert!(coords(&planner).contains(&ChunkCoord3 { x: 2, y: 0, z: 0 }));
     assert!(coords(&planner).contains(&ChunkCoord3 { x: 4, y: 0, z: 0 }));
-    assert_eq!(
+    assert!(
         planner
             .remove_source(DemandSourceId::new(99))
             .unwrap()
-            .is_empty(),
-        true
+            .is_empty()
     );
     planner.remove_source(two).unwrap();
     assert!(coords(&planner).contains(&ChunkCoord3 { x: 4, y: 0, z: 0 }));
