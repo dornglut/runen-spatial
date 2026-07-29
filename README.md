@@ -38,17 +38,18 @@ The Godot adapter remains optional, non-default, experimental, and non-publishab
 
 ## Current maturity
 
-The current code provides a deterministic single-focus demand and streaming-lifecycle baseline with checked spatial addressing and index primitives. Stable chunk, region, and clipmap coordinates are signed `i64`; global positions include their `WorldId`; and frame-local positions are explicitly converted through a translation-only `WorldFrame`.
+The current code provides deterministic multi-source spatial demand and a streaming-lifecycle baseline with checked spatial addressing and index primitives. Stable chunk, region, and clipmap coordinates are signed `i64`; global positions include their `WorldId`; and frame-local positions are explicitly converted through a translation-only `WorldFrame`.
 
 Implemented evidence includes negative-coordinate partitioning, planar and axis-aligned three-dimensional desired chunk sets, load/unload hysteresis, persistent budgeted request queues, request correlation, deterministic reversal behavior, explicit retry, stale-event rejection, and an optional Godot adapter.
 
-Known limitations include single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover.
+Known limitations include one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover.
 
 RunenSpatial is not yet a production-complete infinite-world or multi-consumer streaming framework.
 
 ## Authority and roadmap
 
 - [Canonical architecture](docs/architecture.md)
+- [Spatial demand model](docs/spatial-demand.md)
 - [Package boundaries](docs/package-boundaries.md)
 - [Transfer provenance](docs/provenance/repository-transfer.md)
 - [Validation contract](docs/tooling/validation.md)

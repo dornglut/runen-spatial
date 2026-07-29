@@ -25,7 +25,8 @@ to the host application or domain-specific systems.
 
 - Convert Godot `Vector3` values to finite global `f64` meters and construct a
   checked `WorldPosition` in the controller namespace.
-- Build `GridPartitionConfig` and chunking config from Godot-facing fields.
+- Build `GridPartitionConfig` and a complete demand transaction from
+  Godot-facing fields.
 - Tick `WorldStreamingController`.
 - Translate core events to Godot signals.
 - Accept provider-started, provider-completed, and provider-failed callbacks

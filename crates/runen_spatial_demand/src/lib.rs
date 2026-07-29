@@ -1,15 +1,20 @@
-pub mod config;
-pub mod diff;
+pub mod error;
 pub mod focus;
-pub mod policy;
-pub mod prelude;
-pub mod priority;
-pub mod set;
-pub mod streamer;
+pub mod identity;
+pub mod limits;
+pub mod planner;
+pub mod snapshot;
+pub mod source;
 
-pub use config::ChunkStreamingConfig;
-pub use diff::ChunkSetDiff;
-pub use focus::StreamingFocus;
-pub use policy::{ChunkLoadOrder, ChunkStreamingMode};
-pub use set::ChunkSet;
-pub use streamer::ChunkStreamer;
+pub use error::SpatialDemandError;
+pub use focus::DemandFocus;
+pub use identity::{
+    DemandAxis, DemandClass, DemandDistanceOrder, DemandLimitKind, DemandRank, DemandSourceId,
+    DemandSourcePriority,
+};
+pub use limits::DemandLimits;
+pub use planner::SpatialDemandPlanner;
+pub use snapshot::{
+    DemandPressureDiagnostics, DemandedChunk, EffectiveDemandSnapshot, SpatialDemandDelta,
+};
+pub use source::{DemandSourceChange, DemandSourceSnapshot, DemandTransaction};

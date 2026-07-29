@@ -92,7 +92,7 @@ pub struct StreamRequest {
     pub request_id: StreamRequestId,
     pub chunk_id: runen_spatial::ChunkId,
     pub kind: StreamRequestKind,
-    pub priority: ChunkPriority,
+    pub priority: runen_spatial_demand::DemandRank,
 }
 
 pub enum ProviderEventKind {
@@ -129,7 +129,9 @@ pub struct WorldStreamingEvent {
 Events must be deterministic and ordered by stable request priority, chunk id,
 and request id.
 
-`WorldStreamingController::tick` is fallible for checked spatial math. A focus
-must use the controller's `WorldId`; a spatial failure is reported before the
-controller changes lifecycle records or queues. Broader lifecycle hardening,
-including checked request IDs, remains RS5 work.
+`WorldStreamingController::tick` accepts a complete demand transaction. It asks
+the demand planner to compute and atomically prepare the effective delta before
+changing lifecycle records or queues. Focuses must use the controller's
+`WorldId`; checked demand or spatial failures leave both demand and lifecycle
+state unchanged. Broader lifecycle hardening, including checked request IDs,
+remains RS5 work.

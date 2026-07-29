@@ -37,15 +37,15 @@ No universal residency manager spans these layers.
 
 ## Current implementation
 
-The current implementation retains the accepted single-focus and lifecycle
-baseline while applying checked spatial contracts:
+The current implementation includes accepted multi-source spatial demand and
+the lifecycle baseline while applying checked spatial contracts:
 
 - stable chunk, region, and clipmap coordinates use signed `i64` components;
-- demand is single-focus;
+- demand sources publish complete snapshots that merge into effective demand;
 - streaming uses one combined lifecycle state;
 - request-ID allocation saturates.
 
-RS4 and RS5 remain future work.
+RS5 remains future work.
 
 ## Deferred decisions
 
