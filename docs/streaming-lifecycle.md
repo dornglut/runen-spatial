@@ -1,6 +1,6 @@
 # Streaming Lifecycle
 
-`world_streaming` is the payload-neutral request/event lifecycle controller.
+`runen-spatial-streaming` is the payload-neutral request/event lifecycle controller.
 
 The crate is designed from first principles. Runenwerk engine files such as
 `engine/src/plugins/world/chunks/lifecycle.rs` are reference material only. They
@@ -12,10 +12,10 @@ build-generation, ECS-resource, and render-cache concepts.
 The crate uses request/event ownership:
 
 ```text
-world_streaming emits StreamRequest.
+runen-spatial-streaming emits StreamRequest.
 Host or adapter performs loading.
 Host reports ProviderEvent back.
-world_streaming updates lifecycle.
+runen-spatial-streaming updates lifecycle.
 ```
 
 Do not put provider traits, async runtimes, thread pools, filesystem IO, asset
@@ -90,7 +90,7 @@ pub enum StreamRequestKind {
 
 pub struct StreamRequest {
     pub request_id: StreamRequestId,
-    pub chunk_id: spatial::ChunkId,
+    pub chunk_id: runen_spatial::ChunkId,
     pub kind: StreamRequestKind,
     pub priority: ChunkPriority,
 }
@@ -103,7 +103,7 @@ pub enum ProviderEventKind {
 
 pub struct ProviderEvent {
     pub request_id: StreamRequestId,
-    pub chunk_id: spatial::ChunkId,
+    pub chunk_id: runen_spatial::ChunkId,
     pub kind: ProviderEventKind,
 }
 
@@ -120,7 +120,7 @@ pub enum WorldStreamingEventKind {
 }
 
 pub struct WorldStreamingEvent {
-    pub chunk_id: spatial::ChunkId,
+    pub chunk_id: runen_spatial::ChunkId,
     pub request_id: Option<StreamRequestId>,
     pub kind: WorldStreamingEventKind,
 }

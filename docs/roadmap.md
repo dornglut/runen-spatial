@@ -6,8 +6,7 @@ This document records durable sequence and completion gates.
 
 Live work, priority, assignees, branches, pull requests, commit heads, and validation runs belong in GitHub issues, pull requests, and CI.
 
-- parent outcome: #1
-- current decision authority: #2
+- live work: parent issue #1 and its current child
 
 No GitHub milestone is required. Parent and child issues form the implementation roadmap.
 
@@ -23,6 +22,9 @@ No GitHub milestone is required. Parent and child issues form the implementation
 8. Exact-head CI is merge evidence; durable docs are not live execution ledgers.
 
 ## RS0 — Decide the extraction boundary
+
+Status: complete. The accepted architecture and package-boundary decisions are
+the authority for later slices.
 
 Bind:
 
@@ -48,6 +50,8 @@ Exit gate:
 
 ## RS1 — Normalize governance and validation
 
+Status: complete. The governance and validation baseline is accepted.
+
 Behavior-preserving repository work:
 
 - add `ARCHITECTURE.md`, `AGENTS.md`, and `TESTING.md` root authorities;
@@ -69,16 +73,16 @@ The exact reviewed head passes shared CI.
 
 ## RS2 — Normalize package identity
 
-Apply accepted names without changing runtime behavior:
+Apply the accepted Cargo identities without changing runtime behavior:
 
 ```text
-spatial          -> runen-spatial
-spatial_index    -> runen-spatial-index, if retained provisionally
-chunking         -> runen-spatial-demand
-world_streaming  -> runen-spatial-streaming
+runen-spatial
+runen-spatial-index, retained provisionally pending RS6
+runen-spatial-demand
+runen-spatial-streaming
 ```
 
-Delete `world_core_prelude` and migrate consumers directly to owning packages.
+Delete the broad prelude and migrate consumers directly to owning packages.
 
 Exit gate:
 

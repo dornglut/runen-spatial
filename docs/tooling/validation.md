@@ -9,7 +9,7 @@ The GitHub caller is intentionally minimal and read-only. It invokes the immutab
 ## Validation order
 
 1. Repository policy and required-file inventory.
-2. Cargo manifest inventory, metadata, publication, lint, and path-containment policy.
+2. Cargo manifest inventory, current package identities, publication, lint, and path-containment policy.
 3. Workflow shape and immutable shared revision.
 4. Symlink, gitlink, authored-file-size, source-include, provenance, and current-authority checks.
 5. Relative Markdown links.

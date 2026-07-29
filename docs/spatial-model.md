@@ -1,6 +1,6 @@
 # Spatial Model
 
-`spatial` owns deterministic spatial vocabulary:
+`runen-spatial` owns deterministic spatial vocabulary:
 
 - `WorldId`
 - `WorldPosition`
@@ -50,7 +50,7 @@ It does not replace a full geometry library.
 
 ## Spatial Hash
 
-`spatial::hash` owns payload-neutral deterministic integer hashing for spatial
+`runen_spatial::hash` owns payload-neutral deterministic integer hashing for spatial
 keys. It can hash ordered signed integer coordinates such as 2D or 3D world
 cells and map a hash into a bucket index.
 

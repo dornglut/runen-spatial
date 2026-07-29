@@ -6,14 +6,9 @@ version = 4
 name = "chunk_streaming_demo"
 version = "0.1.0"
 dependencies = [
- "world_core_prelude",
-]
-
-[[package]]
-name = "chunking"
-version = "0.1.0"
-dependencies = [
- "spatial",
+ "runen-spatial",
+ "runen-spatial-demand",
+ "runen-spatial-streaming",
 ]
 
 [[package]]
@@ -106,10 +101,10 @@ dependencies = [
 name = "godot_world_streaming"
 version = "0.1.0"
 dependencies = [
- "chunking",
  "godot",
- "spatial",
- "world_streaming",
+ "runen-spatial",
+ "runen-spatial-demand",
+ "runen-spatial-streaming",
 ]
 
 [[package]]
@@ -158,6 +153,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "runen-spatial"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "runen-spatial-demand"
+version = "0.1.0"
+dependencies = [
+ "runen-spatial",
+]
+
+[[package]]
+name = "runen-spatial-index"
+version = "0.1.0"
+dependencies = [
+ "runen-spatial",
+]
+
+[[package]]
+name = "runen-spatial-streaming"
+version = "0.1.0"
+dependencies = [
+ "runen-spatial",
+ "runen-spatial-demand",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -188,20 +212,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spatial"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "spatial_index"
-version = "0.1.0"
-dependencies = [
- "spatial",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -226,24 +236,6 @@ checksum = "9a42528baceab6c7784446df2a10f4185078c39bf73dc614f154353f1a6b1229"
 dependencies = [
  "proc-macro2",
  "quote",
-]
-
-[[package]]
-name = "world_core_prelude"
-version = "0.1.0"
-dependencies = [
- "chunking",
- "spatial",
- "spatial_index",
- "world_streaming",
-]
-
-[[package]]
-name = "world_streaming"
-version = "0.1.0"
-dependencies = [
- "chunking",
- "spatial",
 ]
 
 [[package]]

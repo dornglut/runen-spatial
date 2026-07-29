@@ -1,22 +1,20 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/spatial",
-  "crates/spatial_index",
-  "crates/chunking",
-  "crates/world_streaming",
-  "crates/world_core_prelude",
+  "crates/runen_spatial",
+  "crates/runen_spatial_index",
+  "crates/runen_spatial_demand",
+  "crates/runen_spatial_streaming",
   "adapters/godot_world_streaming",
   "demos/chunk_streaming_demo",
   "xtask",
 ]
 
 default-members = [
-  "crates/spatial",
-  "crates/spatial_index",
-  "crates/chunking",
-  "crates/world_streaming",
-  "crates/world_core_prelude",
+  "crates/runen_spatial",
+  "crates/runen_spatial_index",
+  "crates/runen_spatial_demand",
+  "crates/runen_spatial_streaming",
 ]
 
 [workspace.package]
@@ -28,12 +26,12 @@ repository = "https://github.com/dornglut/runen-spatial"
 publish = false
 
 [workspace.dependencies]
-chunking = { path = "crates/chunking" }
 godot = "0.5.3"
+runen-spatial = { path = "crates/runen_spatial" }
+runen-spatial-demand = { path = "crates/runen_spatial_demand" }
+runen-spatial-index = { path = "crates/runen_spatial_index" }
+runen-spatial-streaming = { path = "crates/runen_spatial_streaming" }
 serde = { version = "1.0.228", features = ["derive"] }
-spatial = { path = "crates/spatial" }
-spatial_index = { path = "crates/spatial_index" }
-world_streaming = { path = "crates/world_streaming" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -65,6 +65,7 @@ fn validate_repository_policy(root: &Path) -> Result<(), String> {
     validate_required_files(root)?;
     validate_manifest_inventory(root)?;
     validate_manifest_policy(root)?;
+    validate_retired_package_identities(root)?;
     validate_workflow(root)?;
     validate_path_dependencies(root)?;
     validate_repository_files(root)?;
@@ -118,11 +119,10 @@ fn validate_manifest_inventory(root: &Path) -> Result<(), String> {
     let expected = BTreeSet::from([
         "Cargo.toml".to_owned(),
         "adapters/godot_world_streaming/Cargo.toml".to_owned(),
-        "crates/chunking/Cargo.toml".to_owned(),
-        "crates/spatial/Cargo.toml".to_owned(),
-        "crates/spatial_index/Cargo.toml".to_owned(),
-        "crates/world_core_prelude/Cargo.toml".to_owned(),
-        "crates/world_streaming/Cargo.toml".to_owned(),
+        "crates/runen_spatial/Cargo.toml".to_owned(),
+        "crates/runen_spatial_demand/Cargo.toml".to_owned(),
+        "crates/runen_spatial_index/Cargo.toml".to_owned(),
+        "crates/runen_spatial_streaming/Cargo.toml".to_owned(),
         "demos/chunk_streaming_demo/Cargo.toml".to_owned(),
         "xtask/Cargo.toml".to_owned(),
     ]);
@@ -156,11 +156,10 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     }
 
     let package_manifests = [
-        "crates/spatial/Cargo.toml",
-        "crates/spatial_index/Cargo.toml",
-        "crates/chunking/Cargo.toml",
-        "crates/world_streaming/Cargo.toml",
-        "crates/world_core_prelude/Cargo.toml",
+        "crates/runen_spatial/Cargo.toml",
+        "crates/runen_spatial_index/Cargo.toml",
+        "crates/runen_spatial_demand/Cargo.toml",
+        "crates/runen_spatial_streaming/Cargo.toml",
         "demos/chunk_streaming_demo/Cargo.toml",
     ];
 
@@ -195,6 +194,75 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     let xtask = read_text(root, "xtask/Cargo.toml")?;
     require_contains("xtask/Cargo.toml", &xtask, "publish = false")?;
     require_contains("xtask/Cargo.toml", &xtask, "[lints]\nworkspace = true")
+}
+
+fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
+    for retired_directory in ["crates/world_core_prelude"] {
+        if root.join(retired_directory).exists() {
+            return Err(format!(
+                "retired broad prelude directory must remain absent: {retired_directory}"
+            ));
+        }
+    }
+
+    let retired = ["spatial", "spatial_index", "chunking", "world_streaming"];
+    for manifest_path in walk_files(root)?
+        .into_iter()
+        .filter(|path| path.file_name() == Some(OsStr::new("Cargo.toml")))
+    {
+        let relative = relative_string(root, &manifest_path)?;
+        let manifest = fs::read_to_string(&manifest_path)
+            .map_err(|error| format!("failed to read {relative}: {error}"))?;
+        for package in retired {
+            let retired_name = ["name = \\\"", package, "\\\""].concat();
+            if manifest
+                .lines()
+                .map(str::trim_start)
+                .any(|line| line == retired_name)
+            {
+                return Err(format!("retired package name in {relative}: {package}"));
+            }
+            let workspace_key = [package, ".workspace"].concat();
+            let inline_key = [package, " ="].concat();
+            if manifest
+                .lines()
+                .map(str::trim_start)
+                .any(|line| line.starts_with(&workspace_key) || line.starts_with(&inline_key))
+            {
+                return Err(format!(
+                    "retired workspace dependency key in {relative}: {package}"
+                ));
+            }
+        }
+        if manifest.contains("world_core_prelude") {
+            return Err(format!("retired broad prelude package in {relative}"));
+        }
+    }
+
+    for source_path in walk_files(root)?
+        .into_iter()
+        .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .filter(|path| {
+            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
+        })
+    {
+        let relative = relative_string(root, &source_path)?;
+        let source = fs::read_to_string(&source_path)
+            .map_err(|error| format!("failed to read {relative}: {error}"))?;
+        for package in retired {
+            for forbidden in [
+                ["use ", package, "::"].concat(),
+                ["pub use ", package, "::"].concat(),
+                ["extern crate ", package, ";"].concat(),
+            ] {
+                if source.contains(&forbidden) {
+                    return Err(format!("retired crate import in {relative}: {forbidden}"));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_workflow(root: &Path) -> Result<(), String> {
@@ -332,7 +400,7 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
 
     for relative in ACTIVE_DOCS {
         let text = read_text(root, relative)?;
-        for forbidden in ["Crystonix/", "spatial_streaming"] {
+        for forbidden in ["Crystonix/", "aschenrot/spatial_streaming"] {
             if text.contains(forbidden) {
                 return Err(format!(
                     "active documentation contains stale authority `{forbidden}`: {relative}"
