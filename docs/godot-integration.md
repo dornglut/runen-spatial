@@ -23,7 +23,8 @@ to the host application or domain-specific systems.
 
 ## In Scope
 
-- Convert Godot `Vector3` values to meter arrays.
+- Convert Godot `Vector3` values to finite global `f64` meters and construct a
+  checked `WorldPosition` in the controller namespace.
 - Build `GridPartitionConfig` and chunking config from Godot-facing fields.
 - Tick `WorldStreamingController`.
 - Translate core events to Godot signals.
@@ -31,6 +32,10 @@ to the host application or domain-specific systems.
   from host code.
 - Treat provider work as non-cancellable. Desired-state reversals are resolved
   by provider completion or failure events.
+- Report checked position or streaming failures through `streaming_error`.
+
+Coordinate signal and callback components are signed 64-bit values, matching
+the stable core coordinate contract.
 
 ## Out of Scope
 

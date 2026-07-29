@@ -110,6 +110,9 @@ Exit gate:
 - property and negative tests cover containment, round trips, negative coordinates, extreme values, overflow, frame conversion, clipmap windows, and ring mappings;
 - no silent wrapping or saturation changes spatial identity.
 
+RS3 is not complete until its implementation is independently reviewed,
+squash-merged, and validated on accepted main.
+
 ## RS4 — Establish multi-source spatial demand
 
 Replace the inherited single-focus `chunking` surface with an accepted neutral demand model:

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
 pub struct ClipmapCoord3 {
-    pub x: i32,
-    pub y: i32,
-    pub z: i32,
+    pub x: i64,
+    pub y: i64,
+    pub z: i64,
 }
 
 #[derive(

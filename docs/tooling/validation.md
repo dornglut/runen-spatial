@@ -22,6 +22,10 @@ The GitHub caller is intentionally minimal and read-only. It invokes the immutab
 12. Rust 1.93.0 tests excluding the optional Godot adapter.
 13. `git diff --check` and clean tracked repository state.
 
+Repository policy also rejects retired package identities and retired
+foundational address/frame APIs in active Rust sources. Historical provenance
+and investigation material is not treated as current source authority.
+
 ## Core and adapter toolchains
 
 The core framework declares Rust 1.93.0 as its initial MSRV and inherits `unsafe_code = "forbid"`.

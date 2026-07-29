@@ -14,6 +14,11 @@ The current package direction is `runen-spatial-index -> runen-spatial`, `runen-
 
 No compatibility façade or copied source authority is an accepted final state.
 
+Stable spatial coordinates use signed `i64`. `WorldPosition` is a finite global
+position in a `WorldId` namespace; `FrameLocalPosition` is finite `f32` meters
+relative to a translation-only `WorldFrame`. Invalid spatial configuration is
+rejected at construction rather than repaired by clamping.
+
 ## Detailed authority
 
 - [Canonical architecture](docs/architecture.md)

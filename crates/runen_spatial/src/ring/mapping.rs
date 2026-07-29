@@ -6,18 +6,14 @@ pub fn slot_for_coord(
     coord: ClipmapCoord3,
     config: &RingBufferConfig,
 ) -> RingSlot3 {
-    fn wrap(delta: i32, size: u32) -> u32 {
-        let size_i = size.max(1) as i32;
-        let mut v = delta % size_i;
-        if v < 0 {
-            v += size_i;
-        }
-        v as u32
+    fn slot(coord: i64, anchor: i64, size: u32) -> u32 {
+        let modulus = i64::from(size);
+        (coord.rem_euclid(modulus) - anchor.rem_euclid(modulus)).rem_euclid(modulus) as u32
     }
-
+    let dims = config.dims();
     RingSlot3 {
-        x: wrap(coord.x - anchor.x, config.dims[0]),
-        y: wrap(coord.y - anchor.y, config.dims[1]),
-        z: wrap(coord.z - anchor.z, config.dims[2]),
+        x: slot(coord.x, anchor.x, dims[0]),
+        y: slot(coord.y, anchor.y, dims[1]),
+        z: slot(coord.z, anchor.z, dims[2]),
     }
 }

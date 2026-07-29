@@ -1,138 +1,148 @@
 use crate::grid::{ChunkCoord3, ChunkId, RegionCoord3, RegionId};
-use crate::{WorldId, WorldLocalPosition};
+use crate::{FrameLocalPosition, SpatialMathError, WorldFrame, WorldId, WorldPosition};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GridPartitionConfig {
-    pub chunk_edge_meters: f32,
-    pub region_chunk_dims: [u32; 3],
-    pub fixed_point_scale: i32,
+    chunk_edge_meters: f64,
+    region_chunk_dims: [u32; 3],
 }
 
 impl Default for GridPartitionConfig {
     fn default() -> Self {
-        Self {
-            chunk_edge_meters: 32.0,
-            region_chunk_dims: [8, 8, 8],
-            fixed_point_scale: 1024,
-        }
+        Self::try_new(32.0, [8, 8, 8]).expect("default partition configuration is valid")
     }
 }
 
 impl GridPartitionConfig {
-    pub fn quantization_scale(&self) -> i32 {
-        self.fixed_point_scale.max(1)
-    }
-
-    pub fn chunk_coord_from_world_local_position(
-        &self,
-        position: WorldLocalPosition,
-    ) -> ChunkCoord3 {
-        let edge = self.chunk_edge_meters.max(1.0);
-
-        ChunkCoord3 {
-            x: (position.meters[0] / edge).floor() as i32,
-            y: (position.meters[1] / edge).floor() as i32,
-            z: (position.meters[2] / edge).floor() as i32,
+    pub fn try_new(
+        chunk_edge_meters: f64,
+        region_chunk_dims: [u32; 3],
+    ) -> Result<Self, SpatialMathError> {
+        if !chunk_edge_meters.is_finite() {
+            return Err(SpatialMathError::NonFiniteValue {
+                field: "chunk_edge_meters",
+            });
         }
-    }
-
-    pub fn chunk_coord_from_world_local_meters(&self, position_meters: [f32; 3]) -> ChunkCoord3 {
-        self.chunk_coord_from_world_local_position(WorldLocalPosition::new(position_meters))
-    }
-
-    pub fn region_coord_from_chunk_coord(&self, chunk: ChunkCoord3) -> RegionCoord3 {
-        let dims = self.region_chunk_dims_i32();
-
-        RegionCoord3 {
-            x: div_floor(chunk.x, dims[0]),
-            y: div_floor(chunk.y, dims[1]),
-            z: div_floor(chunk.z, dims[2]),
+        if chunk_edge_meters <= 0.0 {
+            return Err(SpatialMathError::NonPositiveValue {
+                field: "chunk_edge_meters",
+            });
         }
+        for (axis, dimension) in region_chunk_dims.iter().enumerate() {
+            if *dimension == 0 {
+                return Err(SpatialMathError::ZeroDimension { axis: axis as u8 });
+            }
+        }
+        Ok(Self {
+            chunk_edge_meters,
+            region_chunk_dims,
+        })
     }
 
-    pub fn chunk_id_from_position(
+    pub fn chunk_edge_meters(&self) -> f64 {
+        self.chunk_edge_meters
+    }
+
+    pub fn region_chunk_dims(&self) -> [u32; 3] {
+        self.region_chunk_dims
+    }
+
+    pub fn world_position_from_frame_local(
         &self,
-        world_id: WorldId,
-        position: WorldLocalPosition,
-    ) -> ChunkId {
-        ChunkId::new(
-            world_id,
-            self.chunk_coord_from_world_local_position(position),
-        )
+        frame: WorldFrame,
+        position: FrameLocalPosition,
+    ) -> Result<WorldPosition, SpatialMathError> {
+        frame.to_global(position)
     }
 
-    pub fn chunk_id_from_meters(&self, world_id: WorldId, position_meters: [f32; 3]) -> ChunkId {
-        self.chunk_id_from_position(world_id, WorldLocalPosition::new(position_meters))
+    pub fn chunk_coord_from_world_position(
+        &self,
+        position: WorldPosition,
+    ) -> Result<ChunkCoord3, SpatialMathError> {
+        let meters = position.meters();
+        Ok(ChunkCoord3 {
+            x: coordinate_from_meters(meters[0], self.chunk_edge_meters, "chunk x")?,
+            y: coordinate_from_meters(meters[1], self.chunk_edge_meters, "chunk y")?,
+            z: coordinate_from_meters(meters[2], self.chunk_edge_meters, "chunk z")?,
+        })
     }
 
-    pub fn region_id_from_chunk_id(&self, chunk_id: ChunkId) -> RegionId {
-        RegionId::new(
+    pub fn chunk_coord_from_frame_local(
+        &self,
+        frame: WorldFrame,
+        position: FrameLocalPosition,
+    ) -> Result<ChunkCoord3, SpatialMathError> {
+        self.chunk_coord_from_world_position(self.world_position_from_frame_local(frame, position)?)
+    }
+
+    pub fn chunk_id_from_world_position(
+        &self,
+        position: WorldPosition,
+    ) -> Result<ChunkId, SpatialMathError> {
+        Ok(ChunkId::new(
+            position.world_id(),
+            self.chunk_coord_from_world_position(position)?,
+        ))
+    }
+
+    pub fn chunk_id_from_frame_local(
+        &self,
+        frame: WorldFrame,
+        position: FrameLocalPosition,
+    ) -> Result<ChunkId, SpatialMathError> {
+        self.chunk_id_from_world_position(self.world_position_from_frame_local(frame, position)?)
+    }
+
+    pub fn region_coord_from_chunk_coord(
+        &self,
+        chunk: ChunkCoord3,
+    ) -> Result<RegionCoord3, SpatialMathError> {
+        Ok(RegionCoord3 {
+            x: chunk.x.div_euclid(i64::from(self.region_chunk_dims[0])),
+            y: chunk.y.div_euclid(i64::from(self.region_chunk_dims[1])),
+            z: chunk.z.div_euclid(i64::from(self.region_chunk_dims[2])),
+        })
+    }
+
+    pub fn region_id_from_chunk_id(&self, chunk_id: ChunkId) -> Result<RegionId, SpatialMathError> {
+        Ok(RegionId::new(
             chunk_id.world_id,
-            self.region_coord_from_chunk_coord(chunk_id.coord),
-        )
+            self.region_coord_from_chunk_coord(chunk_id.coord)?,
+        ))
     }
 
-    pub fn region_id_from_position(
+    pub fn chunk_origin_world_position(
         &self,
         world_id: WorldId,
-        position: WorldLocalPosition,
-    ) -> RegionId {
-        self.region_id_from_chunk_id(self.chunk_id_from_position(world_id, position))
-    }
-
-    fn region_chunk_dims_i32(&self) -> [i32; 3] {
-        [
-            self.region_chunk_dims[0].max(1) as i32,
-            self.region_chunk_dims[1].max(1) as i32,
-            self.region_chunk_dims[2].max(1) as i32,
-        ]
+        chunk: ChunkCoord3,
+    ) -> Result<WorldPosition, SpatialMathError> {
+        let meters = [
+            (chunk.x as f64) * self.chunk_edge_meters,
+            (chunk.y as f64) * self.chunk_edge_meters,
+            (chunk.z as f64) * self.chunk_edge_meters,
+        ];
+        if meters.iter().any(|value| !value.is_finite()) {
+            return Err(SpatialMathError::ArithmeticOverflow {
+                operation: "chunk origin",
+            });
+        }
+        WorldPosition::try_new(world_id, meters)
     }
 }
 
-fn div_floor(value: i32, divisor: i32) -> i32 {
-    let mut out = value / divisor;
-    let remainder = value % divisor;
-    if remainder != 0 && ((remainder < 0) != (divisor < 0)) {
-        out -= 1;
+pub(crate) fn coordinate_from_meters(
+    meters: f64,
+    edge: f64,
+    operation: &'static str,
+) -> Result<i64, SpatialMathError> {
+    if !meters.is_finite() {
+        return Err(SpatialMathError::NonFiniteValue { field: operation });
     }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::GridPartitionConfig;
-    use crate::{ChunkCoord3, WorldId, WorldLocalPosition};
-
-    #[test]
-    fn region_coord_handles_negative_chunks() {
-        let partition = GridPartitionConfig::default();
-        let region = partition.region_coord_from_chunk_coord(ChunkCoord3 {
-            x: -1,
-            y: -8,
-            z: -9,
-        });
-
-        assert_eq!(region.x, -1);
-        assert_eq!(region.y, -1);
-        assert_eq!(region.z, -2);
+    let value = (meters / edge).floor();
+    if !value.is_finite()
+        || !(-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(&value)
+    {
+        return Err(SpatialMathError::CoordinateOutOfRange { operation });
     }
-
-    #[test]
-    fn chunk_id_boundaries_floor_into_correct_chunk() {
-        let partition = GridPartitionConfig {
-            chunk_edge_meters: 10.0,
-            ..GridPartitionConfig::default()
-        };
-
-        let world = WorldId(3);
-        let chunk_a =
-            partition.chunk_id_from_position(world, WorldLocalPosition::new([9.999, 0.0, -0.001]));
-        let chunk_b =
-            partition.chunk_id_from_position(world, WorldLocalPosition::new([10.0, 0.0, 0.0]));
-
-        assert_eq!(chunk_a.coord.x, 0);
-        assert_eq!(chunk_b.coord.x, 1);
-        assert_eq!(chunk_a.world_id, world);
-        assert_eq!(chunk_b.world_id, world);
-    }
+    Ok(value as i64)
 }

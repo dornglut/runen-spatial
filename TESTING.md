@@ -13,6 +13,11 @@ It verifies:
 - locked metadata, formatting, core tests, full workspace checks, denied-warning Clippy, denied-warning rustdoc, and Rust 1.93.0 core compatibility;
 - diff hygiene and a clean tracked repository state after validation.
 
+Spatial-contract tests cover finite namespaced positions, translation-only frame
+round trips and namespace mismatches, signed `i64` coordinate boundaries,
+negative floor mapping, checked hierarchy and clipmap bounds, full-range ring
+mapping, and non-mutating demand and streaming failures.
+
 ## Required command
 
 ```text

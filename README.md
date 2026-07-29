@@ -38,11 +38,11 @@ The Godot adapter remains optional, non-default, experimental, and non-publishab
 
 ## Current maturity
 
-The current code provides a deterministic single-focus demand and streaming-lifecycle baseline with spatial addressing and index primitives.
+The current code provides a deterministic single-focus demand and streaming-lifecycle baseline with checked spatial addressing and index primitives. Stable chunk, region, and clipmap coordinates are signed `i64`; global positions include their `WorldId`; and frame-local positions are explicitly converted through a translation-only `WorldFrame`.
 
 Implemented evidence includes negative-coordinate partitioning, planar and axis-aligned three-dimensional desired chunk sets, load/unload hysteresis, persistent budgeted request queues, request correlation, deterministic reversal behavior, explicit retry, stale-event rejection, and an optional Godot adapter.
 
-Known limitations include contradictory hierarchy semantics, incomplete large-world and overflow contracts, single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover.
+Known limitations include single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover. RS3 is not complete until it is independently reviewed, merged, and validated on accepted main.
 
 RunenSpatial is not yet a production-complete infinite-world or multi-consumer streaming framework.
 

@@ -66,12 +66,44 @@ fn validate_repository_policy(root: &Path) -> Result<(), String> {
     validate_manifest_inventory(root)?;
     validate_manifest_policy(root)?;
     validate_retired_package_identities(root)?;
+    validate_retired_foundational_api_names(root)?;
     validate_workflow(root)?;
     validate_path_dependencies(root)?;
     validate_repository_files(root)?;
     validate_current_authority(root)?;
     validate_provenance(root)?;
     validate_git_index(root)
+}
+
+fn validate_retired_foundational_api_names(root: &Path) -> Result<(), String> {
+    let retired = [
+        ["World", "LocalPosition"].concat(),
+        ["Camera", "RelativeFrame"].concat(),
+        ["build_camera", "_relative_frame"].concat(),
+        ["fixed", "_point_scale"].concat(),
+        ["quantization", "_scale"].concat(),
+    ];
+
+    for source_path in walk_files(root)?
+        .into_iter()
+        .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .filter(|path| {
+            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
+        })
+    {
+        let relative = relative_string(root, &source_path)?;
+        let source = fs::read_to_string(&source_path)
+            .map_err(|error| format!("failed to read {relative}: {error}"))?;
+        for retired_name in &retired {
+            if source.contains(retired_name) {
+                return Err(format!(
+                    "retired foundational API in {relative}: {retired_name}"
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_required_files(root: &Path) -> Result<(), String> {

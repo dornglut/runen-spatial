@@ -1,7 +1,7 @@
 use godot::builtin::{Dictionary, GString, Variant, Vector3};
 use godot::classes::{INode, Node};
 use godot::prelude::*;
-use runen_spatial::{ChunkId, GridPartitionConfig, WorldId};
+use runen_spatial::{ChunkId, GridPartitionConfig, WorldId, WorldPosition};
 use runen_spatial_demand::{
     ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
 };
@@ -23,7 +23,6 @@ pub struct GodotWorldStreamingNode {
     region_dim_x: u32,
     region_dim_y: u32,
     region_dim_z: u32,
-    fixed_point_scale: i32,
 
     load_radius_chunks: i32,
     unload_radius_chunks: i32,
@@ -47,7 +46,6 @@ impl INode for GodotWorldStreamingNode {
             region_dim_x: 8,
             region_dim_y: 8,
             region_dim_z: 8,
-            fixed_point_scale: 1024,
             load_radius_chunks: 4,
             unload_radius_chunks: 6,
             vertical_load_radius_chunks: 1,
@@ -67,25 +65,25 @@ impl INode for GodotWorldStreamingNode {
 #[godot_api]
 impl GodotWorldStreamingNode {
     #[signal]
-    fn chunk_load_requested(request_id: i64, x: i32, y: i32, z: i32);
+    fn chunk_load_requested(request_id: i64, x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_provider_started(request_id: i64, x: i32, y: i32, z: i32);
+    fn chunk_provider_started(request_id: i64, x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_provider_completed(request_id: i64, x: i32, y: i32, z: i32);
+    fn chunk_provider_completed(request_id: i64, x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_provider_failed(request_id: i64, x: i32, y: i32, z: i32);
+    fn chunk_provider_failed(request_id: i64, x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_resident(x: i32, y: i32, z: i32);
+    fn chunk_resident(x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_unload_requested(request_id: i64, x: i32, y: i32, z: i32);
+    fn chunk_unload_requested(request_id: i64, x: i64, y: i64, z: i64);
 
     #[signal]
-    fn chunk_unloaded(x: i32, y: i32, z: i32);
+    fn chunk_unloaded(x: i64, y: i64, z: i64);
 
     #[signal]
     fn streaming_error(message: GString);
@@ -117,12 +115,6 @@ impl GodotWorldStreamingNode {
         self.region_dim_x = x.max(1) as u32;
         self.region_dim_y = y.max(1) as u32;
         self.region_dim_z = z.max(1) as u32;
-        self.rebuild_controller();
-    }
-
-    #[func]
-    pub fn set_fixed_point_scale(&mut self, value: i32) {
-        self.fixed_point_scale = value.max(1);
         self.rebuild_controller();
     }
 
@@ -178,24 +170,36 @@ impl GodotWorldStreamingNode {
             return;
         };
 
-        let output = controller.tick(StreamingTick::from_focus(StreamingFocus::new(
-            vector3_to_meters(position),
-        )));
-        self.emit_tick_output(output.requests, output.events);
+        let position =
+            match WorldPosition::try_new(controller.world_id(), vector3_to_meters(position)) {
+                Ok(position) => position,
+                Err(error) => {
+                    let message = GString::from(format!("{error:?}").as_str());
+                    self.signals().streaming_error().emit(&message);
+                    return;
+                }
+            };
+        match controller.tick(StreamingTick::from_focus(StreamingFocus::new(position))) {
+            Ok(output) => self.emit_tick_output(output.requests, output.events),
+            Err(error) => {
+                let message = GString::from(format!("{error:?}").as_str());
+                self.signals().streaming_error().emit(&message);
+            }
+        }
     }
 
     #[func]
-    pub fn provider_started(&mut self, request_id: i64, x: i32, y: i32, z: i32) {
+    pub fn provider_started(&mut self, request_id: i64, x: i64, y: i64, z: i64) {
         self.accept_provider_event_from_godot(request_id, x, y, z, ProviderEventKind::Started);
     }
 
     #[func]
-    pub fn provider_completed(&mut self, request_id: i64, x: i32, y: i32, z: i32) {
+    pub fn provider_completed(&mut self, request_id: i64, x: i64, y: i64, z: i64) {
         self.accept_provider_event_from_godot(request_id, x, y, z, ProviderEventKind::Completed);
     }
 
     #[func]
-    pub fn provider_failed(&mut self, request_id: i64, x: i32, y: i32, z: i32) {
+    pub fn provider_failed(&mut self, request_id: i64, x: i64, y: i64, z: i64) {
         self.accept_provider_event_from_godot(request_id, x, y, z, ProviderEventKind::Failed);
     }
 
@@ -228,7 +232,6 @@ impl GodotWorldStreamingNode {
         dict.set("region_dim_x", self.region_dim_x as i64);
         dict.set("region_dim_y", self.region_dim_y as i64);
         dict.set("region_dim_z", self.region_dim_z as i64);
-        dict.set("fixed_point_scale", self.fixed_point_scale);
         dict.set("load_radius_chunks", self.load_radius_chunks);
         dict.set("unload_radius_chunks", self.unload_radius_chunks);
         dict.set(
@@ -261,9 +264,9 @@ impl GodotWorldStreamingNode {
     fn accept_provider_event_from_godot(
         &mut self,
         request_id: i64,
-        x: i32,
-        y: i32,
-        z: i32,
+        x: i64,
+        y: i64,
+        z: i64,
         kind: ProviderEventKind,
     ) {
         let Some(event) = provider_event_from_godot(self.world_id, request_id, x, y, z, kind)
@@ -374,15 +377,15 @@ impl GodotWorldStreamingNode {
     }
 
     fn streaming_config(&self) -> WorldStreamingConfig {
-        let partition = GridPartitionConfig {
-            chunk_edge_meters: self.chunk_edge_meters.max(1.0),
-            region_chunk_dims: [
+        let partition = GridPartitionConfig::try_new(
+            f64::from(self.chunk_edge_meters.max(1.0)),
+            [
                 self.region_dim_x.max(1),
                 self.region_dim_y.max(1),
                 self.region_dim_z.max(1),
             ],
-            fixed_point_scale: self.fixed_point_scale.max(1),
-        };
+        )
+        .expect("adapter-maintained partition configuration is valid");
 
         let mut config = WorldStreamingConfig::new(
             WorldId(self.world_id),
@@ -429,6 +432,6 @@ fn request_id_to_i64(request_id: StreamRequestId) -> i64 {
 }
 
 #[allow(dead_code)]
-fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i32, i32, i32) {
+fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
     (chunk_id.coord.x, chunk_id.coord.y, chunk_id.coord.z)
 }

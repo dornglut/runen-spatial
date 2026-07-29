@@ -1,55 +1,58 @@
-use crate::{WorldId, WorldLocalPosition, WorldPosition};
+use crate::{FrameLocalPosition, SpatialMathError, WorldPosition};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct WorldFrame {
-    pub world_id: WorldId,
-    pub origin_meters: [f64; 3],
-    pub basis: [[f32; 3]; 3],
+    origin: WorldPosition,
 }
 
 impl Default for WorldFrame {
     fn default() -> Self {
-        Self {
-            world_id: WorldId(0),
-            origin_meters: [0.0, 0.0, 0.0],
-            basis: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-        }
+        Self::try_new(WorldPosition::try_new(crate::WorldId(0), [0.0; 3]).expect("valid default"))
+            .expect("valid default")
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct CameraRelativeFrame {
-    pub world_id: WorldId,
-    pub camera_world_position: WorldPosition,
-    pub camera_world_local_position: WorldLocalPosition,
-    pub render_origin_offset_meters: [f32; 3],
-}
-
-impl Default for CameraRelativeFrame {
-    fn default() -> Self {
-        Self {
-            world_id: WorldId(0),
-            camera_world_position: WorldPosition::new([0.0, 0.0, 0.0]),
-            camera_world_local_position: WorldLocalPosition::new([0.0, 0.0, 0.0]),
-            render_origin_offset_meters: [0.0, 0.0, 0.0],
-        }
+impl WorldFrame {
+    pub fn try_new(origin: WorldPosition) -> Result<Self, SpatialMathError> {
+        Ok(Self { origin })
     }
-}
 
-pub fn build_camera_relative_frame(
-    world_frame: WorldFrame,
-    camera_world_position: WorldPosition,
-) -> CameraRelativeFrame {
-    let local = [
-        (camera_world_position.meters[0] - world_frame.origin_meters[0]) as f32,
-        (camera_world_position.meters[1] - world_frame.origin_meters[1]) as f32,
-        (camera_world_position.meters[2] - world_frame.origin_meters[2]) as f32,
-    ];
+    pub fn origin(self) -> WorldPosition {
+        self.origin
+    }
 
-    CameraRelativeFrame {
-        world_id: world_frame.world_id,
-        camera_world_position,
-        camera_world_local_position: WorldLocalPosition::new(local),
-        render_origin_offset_meters: local,
+    pub fn to_local(self, position: WorldPosition) -> Result<FrameLocalPosition, SpatialMathError> {
+        if position.world_id() != self.origin.world_id() {
+            return Err(SpatialMathError::WorldMismatch {
+                expected: self.origin.world_id(),
+                actual: position.world_id(),
+            });
+        }
+        let global = position.meters();
+        let origin = self.origin.meters();
+        let mut local = [0.0; 3];
+        for axis in 0..3 {
+            let delta = global[axis] - origin[axis];
+            if !delta.is_finite() || delta.abs() > f64::from(f32::MAX) {
+                return Err(SpatialMathError::LocalPositionOutOfRange { axis: axis as u8 });
+            }
+            local[axis] = delta as f32;
+        }
+        FrameLocalPosition::try_new(local)
+    }
+
+    pub fn to_global(self, local: FrameLocalPosition) -> Result<WorldPosition, SpatialMathError> {
+        let origin = self.origin.meters();
+        let meters = local.meters();
+        let mut global = [0.0; 3];
+        for axis in 0..3 {
+            global[axis] = origin[axis] + f64::from(meters[axis]);
+            if !global[axis].is_finite() {
+                return Err(SpatialMathError::ArithmeticOverflow {
+                    operation: "frame local to global",
+                });
+            }
+        }
+        WorldPosition::try_new(self.origin.world_id(), global)
     }
 }

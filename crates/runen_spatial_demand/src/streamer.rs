@@ -2,7 +2,7 @@ use crate::{
     ChunkLoadOrder, ChunkSet, ChunkSetDiff, ChunkStreamingConfig, ChunkStreamingMode,
     StreamingFocus,
 };
-use runen_spatial::{ChunkCoord3, GridPartitionConfig};
+use runen_spatial::{ChunkCoord3, GridPartitionConfig, SpatialMathError};
 
 pub struct ChunkStreamer {
     partition: GridPartitionConfig,
@@ -18,71 +18,67 @@ impl ChunkStreamer {
             active: ChunkSet::default(),
         }
     }
-
     pub fn partition(&self) -> &GridPartitionConfig {
         &self.partition
     }
-
     pub fn config(&self) -> ChunkStreamingConfig {
         self.config
     }
-
     pub fn active_chunks(&self) -> &ChunkSet {
         &self.active
     }
-
     pub fn active_chunk_count(&self) -> usize {
         self.active.len()
     }
-
     pub fn set_config(&mut self, config: ChunkStreamingConfig) {
         self.config = config.clamped();
     }
-
     pub fn clear(&mut self) {
         self.active.clear();
     }
 
-    pub fn center_chunk_for_focus(&self, focus: StreamingFocus) -> ChunkCoord3 {
+    pub fn center_chunk_for_focus(
+        &self,
+        focus: StreamingFocus,
+    ) -> Result<ChunkCoord3, SpatialMathError> {
         self.partition
-            .chunk_coord_from_world_local_meters(focus.position_meters)
+            .chunk_coord_from_world_position(focus.position())
     }
 
-    pub fn update_focus(&mut self, focus: StreamingFocus) -> ChunkSetDiff {
-        let center = self.center_chunk_for_focus(focus);
-
+    pub fn update_focus(
+        &mut self,
+        focus: StreamingFocus,
+    ) -> Result<ChunkSetDiff, SpatialMathError> {
+        let center = self.center_chunk_for_focus(focus)?;
         let desired = self.build_chunk_set(
             center,
             self.config.load_radius_chunks,
             self.config.vertical_load_radius_chunks,
-        );
-
+        )?;
         let retained = self.build_chunk_set(
             center,
             self.config.unload_radius_chunks,
             self.config.vertical_unload_radius_chunks,
-        );
-
+        )?;
         let mut next = desired.clone();
         for chunk in self.active.iter() {
             if retained.contains(chunk) {
                 next.insert(*chunk);
             }
         }
-
         let mut diff = diff_chunk_sets(&self.active, &next);
-        self.active = next;
-
         sort_chunks(center, &mut diff.entered, self.config.load_order);
         sort_chunks(center, &mut diff.exited, self.config.load_order);
-
-        diff
+        self.active = next;
+        Ok(diff)
     }
 
-    pub fn desired_chunks_for_focus(&self, focus: StreamingFocus) -> ChunkSet {
-        let center = self.center_chunk_for_focus(focus);
+    pub fn desired_chunks_for_focus(
+        &self,
+        focus: StreamingFocus,
+    ) -> Result<ChunkSet, SpatialMathError> {
         self.build_chunk_set(
-            center,
+            self.center_chunk_for_focus(focus)?,
             self.config.load_radius_chunks,
             self.config.vertical_load_radius_chunks,
         )
@@ -93,61 +89,64 @@ impl ChunkStreamer {
         center: ChunkCoord3,
         horizontal_radius: i32,
         vertical_radius: i32,
-    ) -> ChunkSet {
+    ) -> Result<ChunkSet, SpatialMathError> {
+        let horizontal = i64::from(horizontal_radius);
+        let vertical = i64::from(vertical_radius);
+        let x = checked_range(center.x, horizontal)?;
+        let y = checked_range(center.y, vertical)?;
+        let z = checked_range(center.z, horizontal)?;
         let mut set = ChunkSet::default();
-
         match self.config.mode {
-            ChunkStreamingMode::PlanarXZ => {
-                for x in (center.x - horizontal_radius)..=(center.x + horizontal_radius) {
-                    for z in (center.z - horizontal_radius)..=(center.z + horizontal_radius) {
-                        for y in (center.y - vertical_radius)..=(center.y + vertical_radius) {
-                            set.insert(ChunkCoord3 { x, y, z });
-                        }
-                    }
-                }
-            }
-            ChunkStreamingMode::Volume3D => {
-                for x in (center.x - horizontal_radius)..=(center.x + horizontal_radius) {
-                    for y in (center.y - vertical_radius)..=(center.y + vertical_radius) {
-                        for z in (center.z - horizontal_radius)..=(center.z + horizontal_radius) {
+            ChunkStreamingMode::PlanarXZ | ChunkStreamingMode::Volume3D => {
+                for x in x.0..=x.1 {
+                    for y in y.0..=y.1 {
+                        for z in z.0..=z.1 {
                             set.insert(ChunkCoord3 { x, y, z });
                         }
                     }
                 }
             }
         }
-
-        set
+        Ok(set)
     }
 }
 
+fn checked_range(center: i64, radius: i64) -> Result<(i64, i64), SpatialMathError> {
+    Ok((
+        center
+            .checked_sub(radius)
+            .ok_or(SpatialMathError::ArithmeticOverflow {
+                operation: "streaming chunk range",
+            })?,
+        center
+            .checked_add(radius)
+            .ok_or(SpatialMathError::ArithmeticOverflow {
+                operation: "streaming chunk range",
+            })?,
+    ))
+}
+
 fn diff_chunk_sets(previous: &ChunkSet, next: &ChunkSet) -> ChunkSetDiff {
-    let mut entered = Vec::new();
-    let mut exited = Vec::new();
-
-    for chunk in next.iter() {
-        if !previous.contains(chunk) {
-            entered.push(*chunk);
-        }
-    }
-
-    for chunk in previous.iter() {
-        if !next.contains(chunk) {
-            exited.push(*chunk);
-        }
-    }
-
+    let entered = next
+        .iter()
+        .filter(|chunk| !previous.contains(chunk))
+        .copied()
+        .collect();
+    let exited = previous
+        .iter()
+        .filter(|chunk| !next.contains(chunk))
+        .copied()
+        .collect();
     ChunkSetDiff { entered, exited }
 }
 
 fn sort_chunks(center: ChunkCoord3, chunks: &mut [ChunkCoord3], order: ChunkLoadOrder) {
     chunks.sort_by_key(|chunk| {
-        let dx = chunk.x - center.x;
-        let dy = chunk.y - center.y;
-        let dz = chunk.z - center.z;
+        let dx = i128::from(chunk.x) - i128::from(center.x);
+        let dy = i128::from(chunk.y) - i128::from(center.y);
+        let dz = i128::from(chunk.z) - i128::from(center.z);
         dx * dx + dy * dy + dz * dz
     });
-
     if matches!(order, ChunkLoadOrder::FarthestFirst) {
         chunks.reverse();
     }

@@ -140,12 +140,29 @@ impl WorldStreamingController {
         self.pending_requests.values()
     }
 
-    pub fn tick(&mut self, tick: StreamingTick) -> StreamingTickOutput {
+    pub fn tick(
+        &mut self,
+        tick: StreamingTick,
+    ) -> Result<StreamingTickOutput, WorldStreamingError> {
         let mut events = Vec::new();
 
         if let Some(focus) = tick.focus {
-            let center = self.streamer.center_chunk_for_focus(focus);
-            let diff = self.streamer.update_focus(focus);
+            if focus.position().world_id() != self.world_id {
+                return Err(WorldStreamingError::SpatialMath(
+                    runen_spatial::SpatialMathError::WorldMismatch {
+                        expected: self.world_id,
+                        actual: focus.position().world_id(),
+                    },
+                ));
+            }
+            let center = self
+                .streamer
+                .center_chunk_for_focus(focus)
+                .map_err(WorldStreamingError::SpatialMath)?;
+            let diff = self
+                .streamer
+                .update_focus(focus)
+                .map_err(WorldStreamingError::SpatialMath)?;
             self.apply_chunk_diff(center, diff, &mut events);
         }
 
@@ -165,7 +182,7 @@ impl WorldStreamingController {
             &mut events,
         );
 
-        StreamingTickOutput { requests, events }
+        Ok(StreamingTickOutput { requests, events })
     }
 
     pub fn accept_provider_event(

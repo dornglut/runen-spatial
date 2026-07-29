@@ -1,8 +1,9 @@
 use crate::{ChunkLifecycleState, ProviderEventKind, StreamRequestId, StreamRequestKind};
-use runen_spatial::ChunkId;
+use runen_spatial::{ChunkId, SpatialMathError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WorldStreamingError {
+    SpatialMath(SpatialMathError),
     UnknownChunk {
         chunk_id: ChunkId,
     },

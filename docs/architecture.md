@@ -37,15 +37,16 @@ No universal residency manager spans these layers.
 
 ## Current implementation
 
-The current implementation retains the inherited behavioral baseline while
-package identities are normalized:
+The current implementation retains the accepted single-focus and lifecycle
+baseline while applying checked spatial contracts:
 
-- stable chunk and region coordinates use signed `i32` components;
+- stable chunk, region, and clipmap coordinates use signed `i64` components;
 - demand is single-focus;
 - streaming uses one combined lifecycle state;
 - request-ID allocation saturates.
 
-These are current implementation facts, not the accepted end-state contract.
+RS3 remains subject to independent review and accepted-main validation; RS4 and
+RS5 remain future work.
 
 ## Deferred decisions
 
@@ -67,7 +68,7 @@ RunenSpatial owns:
 - clipmap and ring address mappings;
 - minimal spatial bounds and neutral spatial hashes;
 - generic spatial-index contracts;
-- deterministic multi-source spatial demand;
+- deterministic single-focus spatial demand;
 - content-agnostic load/unload lifecycle for one host-defined availability class
   per controller instance;
 - request identities, budgets, correlation, transition outcomes, and diagnostics.
