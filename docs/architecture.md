@@ -45,8 +45,7 @@ baseline while applying checked spatial contracts:
 - streaming uses one combined lifecycle state;
 - request-ID allocation saturates.
 
-RS3 remains subject to independent review and accepted-main validation; RS4 and
-RS5 remain future work.
+RS4 and RS5 remain future work.
 
 ## Deferred decisions
 
@@ -68,7 +67,7 @@ RunenSpatial owns:
 - clipmap and ring address mappings;
 - minimal spatial bounds and neutral spatial hashes;
 - generic spatial-index contracts;
-- deterministic single-focus spatial demand;
+- deterministic multi-source spatial demand;
 - content-agnostic load/unload lifecycle for one host-defined availability class
   per controller instance;
 - request identities, budgets, correlation, transition outcomes, and diagnostics.

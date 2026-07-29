@@ -12,6 +12,13 @@ fn focus(meters: [f64; 3]) -> StreamingFocus {
     StreamingFocus::new(WorldPosition::try_new(WorldId(7), meters).unwrap())
 }
 
+fn squared_distance_from_origin(chunk: ChunkCoord3) -> i128 {
+    let x = i128::from(chunk.x);
+    let y = i128::from(chunk.y);
+    let z = i128::from(chunk.z);
+    x * x + y * y + z * z
+}
+
 #[test]
 fn first_update_populates_active_set() {
     let partition = default_partition();
@@ -160,6 +167,14 @@ fn nearest_first_orders_by_distance() {
         diff.entered.first().copied(),
         Some(ChunkCoord3 { x: 0, y: 0, z: 0 })
     );
+    for adjacent in diff.entered.windows(2) {
+        let left_distance = squared_distance_from_origin(adjacent[0]);
+        let right_distance = squared_distance_from_origin(adjacent[1]);
+        assert!(left_distance <= right_distance);
+        if left_distance == right_distance {
+            assert!(adjacent[0] <= adjacent[1]);
+        }
+    }
 }
 
 #[test]
@@ -185,6 +200,14 @@ fn farthest_first_reverses_priority() {
         diff.entered.last().copied(),
         Some(ChunkCoord3 { x: 0, y: 0, z: 0 })
     );
+    for adjacent in diff.entered.windows(2) {
+        let left_distance = squared_distance_from_origin(adjacent[0]);
+        let right_distance = squared_distance_from_origin(adjacent[1]);
+        assert!(left_distance >= right_distance);
+        if left_distance == right_distance {
+            assert!(adjacent[0] >= adjacent[1]);
+        }
+    }
 }
 
 #[test]
@@ -234,5 +257,28 @@ fn full_range_distance_failure_is_atomic() {
             operation: "chunk distance square" | "chunk distance sum"
         }
     ));
+    assert_eq!(streamer.active_chunks(), &active_before);
+}
+
+#[test]
+fn failed_focus_preparation_leaves_active_set_unchanged() {
+    let mut streamer = ChunkStreamer::new(default_partition(), ChunkStreamingConfig::default());
+    streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
+    let active_before = streamer.active_chunks().clone();
+
+    let error = streamer
+        .update_focus_with(focus([16.0, 0.0, 0.0]), |_, _| {
+            Err::<(), _>(SpatialMathError::ArithmeticOverflow {
+                operation: "test focus preparation",
+            })
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        SpatialMathError::ArithmeticOverflow {
+            operation: "test focus preparation",
+        }
+    );
     assert_eq!(streamer.active_chunks(), &active_before);
 }

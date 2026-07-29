@@ -42,7 +42,7 @@ The current code provides a deterministic single-focus demand and streaming-life
 
 Implemented evidence includes negative-coordinate partitioning, planar and axis-aligned three-dimensional desired chunk sets, load/unload hysteresis, persistent budgeted request queues, request correlation, deterministic reversal behavior, explicit retry, stale-event rejection, and an optional Godot adapter.
 
-Known limitations include single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover. RS3 is not complete until it is independently reviewed, merged, and validated on accepted main.
+Known limitations include single-source demand, stale queued-priority risk, one combined lifecycle with a universal `Failed` state, inherited post-load payload failure reporting, saturating request-ID allocation, unaudited index and adapter characteristics, and no completed Runenwerk cutover.
 
 RunenSpatial is not yet a production-complete infinite-world or multi-consumer streaming framework.
 

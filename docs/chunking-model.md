@@ -38,5 +38,8 @@ the focus moves near chunk boundaries.
 Lifecycle transitions belong in `runen-spatial-streaming`, not here.
 
 The planner returns checked spatial-math errors for coordinate range failures;
-an invalid focus update does not replace the active desired set. Multi-source
-demand is RS4 work and is not part of this contract.
+an invalid focus update does not replace the active desired set. Its public
+focus-update surface is atomic: `update_focus` returns the computed diff, and
+`update_focus_with` commits only after its callback has prepared any additional
+fallible work. No independently applicable candidate-update token is exposed.
+Multi-source demand is RS4 work and is not part of this current implementation.

@@ -5,7 +5,7 @@ use crate::events::{
 use crate::lifecycle::ChunkLifecycleState;
 use crate::priority::{ChunkPriority, distance_squared};
 use crate::request::{StreamRequest, StreamRequestId, StreamRequestKind};
-use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, WorldId};
+use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, SpatialMathError, WorldId};
 use runen_spatial_demand::{ChunkSetDiff, ChunkStreamer, ChunkStreamingConfig, StreamingFocus};
 use std::collections::BTreeMap;
 
@@ -158,13 +158,11 @@ impl WorldStreamingController {
                     },
                 ));
             }
-            let update = self
+            let priorities = self
                 .streamer
-                .preview_focus_update(focus)
+                .update_focus_with(focus, prepare_chunk_diff)
                 .map_err(WorldStreamingError::SpatialMath)?;
-            let priorities = self.prepare_chunk_diff(update.center(), update.diff())?;
             self.apply_prepared_chunk_diff(priorities, &mut events);
-            self.streamer.apply_focus_update(update);
         }
 
         let mut requests = Vec::new();
@@ -378,60 +376,6 @@ impl WorldStreamingController {
         Ok(event)
     }
 
-    fn prepare_chunk_diff(
-        &self,
-        center: ChunkCoord3,
-        diff: &ChunkSetDiff,
-    ) -> Result<PreparedChunkDiff, WorldStreamingError> {
-        let entered = diff
-            .entered
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(rank, coord)| {
-                let rank = u32::try_from(rank).map_err(|_| {
-                    WorldStreamingError::SpatialMath(
-                        runen_spatial::SpatialMathError::ArithmeticOverflow {
-                            operation: "streaming priority rank",
-                        },
-                    )
-                })?;
-                Ok((
-                    coord,
-                    ChunkPriority::new(
-                        rank,
-                        distance_squared(coord, center)
-                            .map_err(WorldStreamingError::SpatialMath)?,
-                    ),
-                ))
-            })
-            .collect::<Result<Vec<_>, WorldStreamingError>>()?;
-        let exited = diff
-            .exited
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(rank, coord)| {
-                let rank = u32::try_from(rank).map_err(|_| {
-                    WorldStreamingError::SpatialMath(
-                        runen_spatial::SpatialMathError::ArithmeticOverflow {
-                            operation: "streaming priority rank",
-                        },
-                    )
-                })?;
-                Ok((
-                    coord,
-                    ChunkPriority::new(
-                        rank,
-                        distance_squared(coord, center)
-                            .map_err(WorldStreamingError::SpatialMath)?,
-                    ),
-                ))
-            })
-            .collect::<Result<Vec<_>, WorldStreamingError>>()?;
-        Ok((entered, exited))
-    }
-
     fn apply_prepared_chunk_diff(
         &mut self,
         priorities: PreparedChunkDiff,
@@ -561,4 +505,31 @@ impl WorldStreamingController {
         self.next_request_id = self.next_request_id.saturating_add(1);
         request_id
     }
+}
+
+fn prepare_chunk_diff(
+    center: ChunkCoord3,
+    diff: &ChunkSetDiff,
+) -> Result<PreparedChunkDiff, SpatialMathError> {
+    let prepare_priorities = |chunks: &[ChunkCoord3]| {
+        chunks
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(rank, coord)| {
+                let rank =
+                    u32::try_from(rank).map_err(|_| SpatialMathError::ArithmeticOverflow {
+                        operation: "streaming priority rank",
+                    })?;
+                Ok((
+                    coord,
+                    ChunkPriority::new(rank, distance_squared(coord, center)?),
+                ))
+            })
+            .collect::<Result<Vec<_>, SpatialMathError>>()
+    };
+    Ok((
+        prepare_priorities(&diff.entered)?,
+        prepare_priorities(&diff.exited)?,
+    ))
 }

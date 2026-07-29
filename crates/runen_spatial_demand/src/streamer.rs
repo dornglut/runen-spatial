@@ -10,23 +10,6 @@ pub struct ChunkStreamer {
     active: ChunkSet,
 }
 
-#[derive(Debug, Clone)]
-pub struct ChunkFocusUpdate {
-    center: ChunkCoord3,
-    next: ChunkSet,
-    diff: ChunkSetDiff,
-}
-
-impl ChunkFocusUpdate {
-    pub fn center(&self) -> ChunkCoord3 {
-        self.center
-    }
-
-    pub fn diff(&self) -> &ChunkSetDiff {
-        &self.diff
-    }
-}
-
 impl ChunkStreamer {
     pub fn new(partition: GridPartitionConfig, config: ChunkStreamingConfig) -> Self {
         Self {
@@ -66,14 +49,24 @@ impl ChunkStreamer {
         &mut self,
         focus: StreamingFocus,
     ) -> Result<ChunkSetDiff, SpatialMathError> {
-        let update = self.preview_focus_update(focus)?;
-        Ok(self.apply_focus_update(update))
+        self.update_focus_with(focus, |_, diff| Ok(diff.clone()))
     }
 
-    pub fn preview_focus_update(
+    pub fn update_focus_with<T>(
+        &mut self,
+        focus: StreamingFocus,
+        prepare: impl FnOnce(ChunkCoord3, &ChunkSetDiff) -> Result<T, SpatialMathError>,
+    ) -> Result<T, SpatialMathError> {
+        let (center, next, diff) = self.focus_update_candidate(focus)?;
+        let prepared = prepare(center, &diff)?;
+        self.active = next;
+        Ok(prepared)
+    }
+
+    fn focus_update_candidate(
         &self,
         focus: StreamingFocus,
-    ) -> Result<ChunkFocusUpdate, SpatialMathError> {
+    ) -> Result<(ChunkCoord3, ChunkSet, ChunkSetDiff), SpatialMathError> {
         let center = self.center_chunk_for_focus(focus)?;
         let desired = self.build_chunk_set(
             center,
@@ -94,12 +87,7 @@ impl ChunkStreamer {
         let mut diff = diff_chunk_sets(&self.active, &next);
         sort_chunks(center, &mut diff.entered, self.config.load_order)?;
         sort_chunks(center, &mut diff.exited, self.config.load_order)?;
-        Ok(ChunkFocusUpdate { center, next, diff })
-    }
-
-    pub fn apply_focus_update(&mut self, update: ChunkFocusUpdate) -> ChunkSetDiff {
-        self.active = update.next;
-        update.diff
+        Ok((center, next, diff))
     }
 
     pub fn desired_chunks_for_focus(
@@ -185,12 +173,13 @@ fn sort_chunks(
         });
     }
     ranked.sort_by(
-        |(left_distance, left_coord), (right_distance, right_coord)| {
-            let distance_order = match order {
-                ChunkLoadOrder::NearestFirst => left_distance.cmp(right_distance),
-                ChunkLoadOrder::FarthestFirst => right_distance.cmp(left_distance),
-            };
-            distance_order.then_with(|| left_coord.cmp(right_coord))
+        |(left_distance, left_coord), (right_distance, right_coord)| match order {
+            ChunkLoadOrder::NearestFirst => left_distance
+                .cmp(right_distance)
+                .then_with(|| left_coord.cmp(right_coord)),
+            ChunkLoadOrder::FarthestFirst => right_distance
+                .cmp(left_distance)
+                .then_with(|| right_coord.cmp(left_coord)),
         },
     );
     for (slot, (_, coord)) in chunks.iter_mut().zip(ranked) {
