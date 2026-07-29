@@ -556,8 +556,12 @@ fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{partition_from_node_values, requested_region_dims};
-    use runen_spatial::SpatialMathError;
+    use super::{
+        NODE_FOCUS_SOURCE, demand_transaction_from_node_values, partition_from_node_values,
+        requested_radii, requested_region_dims,
+    };
+    use runen_spatial::{SpatialMathError, WorldId, WorldPosition};
+    use runen_spatial_demand::{DemandAxis, DemandSourceChange, SpatialDemandError};
 
     #[test]
     fn partition_values_reject_invalid_edges_without_repairing_them() {
@@ -586,5 +590,58 @@ mod tests {
             partition_from_node_values(24.0, requested_region_dims([3, 4, 5]).unwrap()).unwrap();
         assert_eq!(config.chunk_edge_meters(), 24.0);
         assert_eq!(config.region_chunk_dims(), [3, 4, 5]);
+    }
+
+    #[test]
+    fn demand_radii_reject_every_invalid_field_without_repair() {
+        for radii in [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]] {
+            assert!(matches!(
+                requested_radii(radii),
+                Err(SpatialDemandError::CountOverflow {
+                    operation: "Godot demand radius"
+                })
+            ));
+        }
+        assert_eq!(
+            requested_radii([2, 1, 0, 0]),
+            Err(SpatialDemandError::RetainRadiusBelowDesired {
+                axis: DemandAxis::Horizontal,
+                desired: 2,
+                retain: 1,
+            })
+        );
+        assert_eq!(
+            requested_radii([0, 0, 2, 1]),
+            Err(SpatialDemandError::RetainRadiusBelowDesired {
+                axis: DemandAxis::Vertical,
+                desired: 2,
+                retain: 1,
+            })
+        );
+        assert_eq!(requested_radii([2, 3, 4, 5]), Ok([2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn adapter_transaction_is_a_complete_stable_source_replacement() {
+        let position = WorldPosition::try_new(WorldId(23), [12.0, 0.0, -4.0]).unwrap();
+        let transaction = demand_transaction_from_node_values(position, [2, 3, 4, 5]).unwrap();
+        let changes = transaction.changes().collect::<Vec<_>>();
+        assert_eq!(changes.len(), 1);
+        match changes[0] {
+            DemandSourceChange::Replace {
+                source_id,
+                snapshot,
+            } => {
+                assert_eq!(*source_id, NODE_FOCUS_SOURCE);
+                let focus = snapshot.focus().unwrap();
+                assert_eq!(focus.position(), position);
+                assert_eq!(focus.horizontal_desired_radius(), 2);
+                assert_eq!(focus.horizontal_retain_radius(), 3);
+                assert_eq!(focus.vertical_desired_radius(), 4);
+                assert_eq!(focus.vertical_retain_radius(), 5);
+                assert_eq!(snapshot.pins().count(), 0);
+            }
+            DemandSourceChange::Remove { .. } => panic!("adapter must publish a replacement"),
+        }
     }
 }

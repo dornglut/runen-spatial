@@ -67,6 +67,7 @@ fn validate_repository_policy(root: &Path) -> Result<(), String> {
     validate_manifest_policy(root)?;
     validate_retired_package_identities(root)?;
     validate_retired_foundational_api_names(root)?;
+    validate_retired_demand_authority(root)?;
     validate_workflow(root)?;
     validate_path_dependencies(root)?;
     validate_repository_files(root)?;
@@ -100,6 +101,84 @@ fn validate_retired_foundational_api_names(root: &Path) -> Result<(), String> {
                     "retired foundational API in {relative}: {retired_name}"
                 ));
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_retired_demand_authority(root: &Path) -> Result<(), String> {
+    let retired = [
+        "StreamingFocus",
+        "ChunkStreamingConfig",
+        "ChunkStreamingMode",
+        "ChunkLoadOrder",
+        "ChunkStreamer",
+        "ChunkSetDiff",
+        "DemandShape",
+        "PlanarXZ",
+        "Volume3D",
+    ];
+    let retired_chunk_set = ["Chunk", "Set"].concat();
+
+    for source_path in walk_files(root)?
+        .into_iter()
+        .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .filter(|path| {
+            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
+        })
+    {
+        let relative = relative_string(root, &source_path)?;
+        let source = fs::read_to_string(&source_path)
+            .map_err(|error| format!("failed to read {relative}: {error}"))?;
+        for name in retired {
+            if source.contains(name) {
+                return Err(format!(
+                    "retired RS4 source authority in {relative}: {name}"
+                ));
+            }
+        }
+        for prefix in ["pub struct ", "pub enum ", "pub use ", "use "] {
+            if source.contains(&[prefix, &retired_chunk_set].concat()) {
+                return Err(format!(
+                    "retired RS4 source authority in {relative}: {retired_chunk_set}"
+                ));
+            }
+        }
+    }
+
+    const CURRENT_DOCS: &[&str] = &[
+        "README.md",
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "TESTING.md",
+        "docs/architecture.md",
+        "docs/godot-integration.md",
+        "docs/grid-composition.md",
+        "docs/package-boundaries.md",
+        "docs/roadmap.md",
+        "docs/runenwerk-integration.md",
+        "docs/spatial-demand.md",
+        "docs/spatial-model.md",
+        "docs/streaming-lifecycle.md",
+        "docs/tooling/validation.md",
+    ];
+    let retired_path = ["docs/", "chunking-model.md"].concat();
+    let retired_document = ["chunking", "-model.md"].concat();
+    for relative in CURRENT_DOCS {
+        let text = read_text(root, relative)?;
+        for name in retired {
+            if text.contains(name) {
+                return Err(format!(
+                    "retired RS4 documentation authority in {relative}: {name}"
+                ));
+            }
+        }
+        if text.contains(&retired_chunk_set)
+            || text.contains(&retired_path)
+            || text.contains(&retired_document)
+        {
+            return Err(format!("retired RS4 documentation authority in {relative}"));
         }
     }
 

@@ -124,23 +124,57 @@ impl SpatialDemandPlanner {
         &self,
         transaction: DemandTransaction,
     ) -> Result<Candidate, SpatialDemandError> {
-        let mut sources = self.sources.clone();
+        let mut snapshots = self
+            .sources
+            .iter()
+            .map(|(source_id, state)| (*source_id, state.snapshot.clone()))
+            .collect::<BTreeMap<_, _>>();
         for change in transaction.changes() {
             match change {
                 DemandSourceChange::Replace {
                     source_id,
                     snapshot,
                 } => {
-                    let previous = sources.get(source_id);
-                    let state = self.replacement_state(*source_id, snapshot.clone(), previous)?;
-                    sources.insert(*source_id, state);
+                    snapshots.insert(*source_id, snapshot.clone());
                 }
                 DemandSourceChange::Remove { source_id } => {
-                    sources.remove(source_id);
+                    snapshots.remove(source_id);
                 }
             }
         }
+
+        self.validate_source_count(snapshots.len(), self.limits)?;
+
+        let mut sources = BTreeMap::new();
+        for (source_id, snapshot) in snapshots {
+            let existing = self.sources.get(&source_id);
+            let state = if existing.is_some_and(|state| state.snapshot == snapshot) {
+                existing.expect("existing source state was checked").clone()
+            } else {
+                self.replacement_state(source_id, snapshot, existing)?
+            };
+            sources.insert(source_id, state);
+        }
         self.candidate(sources, self.limits)
+    }
+
+    fn validate_source_count(
+        &self,
+        source_count: usize,
+        limits: DemandLimits,
+    ) -> Result<(), SpatialDemandError> {
+        let source_limit = usize::try_from(limits.max_sources()).map_err(|_| {
+            SpatialDemandError::CountOverflow {
+                operation: "source limit conversion",
+            }
+        })?;
+        if source_count > source_limit {
+            return Err(SpatialDemandError::SourceLimitExceeded {
+                limit: limits.max_sources(),
+                candidate: source_count,
+            });
+        }
+        Ok(())
     }
 
     fn replacement_state(
@@ -212,17 +246,7 @@ impl SpatialDemandPlanner {
         sources: BTreeMap<DemandSourceId, SourceState>,
         limits: DemandLimits,
     ) -> Result<Candidate, SpatialDemandError> {
-        let source_limit = usize::try_from(limits.max_sources()).map_err(|_| {
-            SpatialDemandError::CountOverflow {
-                operation: "source limit conversion",
-            }
-        })?;
-        if sources.len() > source_limit {
-            return Err(SpatialDemandError::SourceLimitExceeded {
-                limit: limits.max_sources(),
-                candidate: sources.len(),
-            });
-        }
+        self.validate_source_count(sources.len(), limits)?;
         let mut total = 0_usize;
         let mut effective = BTreeMap::<ChunkId, Contribution>::new();
         for (source_id, state) in &sources {

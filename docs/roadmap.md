@@ -115,7 +115,7 @@ squash-merged, and validated on accepted main.
 
 ## RS4 — Establish multi-source spatial demand
 
-Replace the inherited single-focus demand surface with an accepted neutral demand model:
+Replace the inherited single-focus demand surface with a neutral demand model:
 
 - source IDs and complete source snapshots;
 - explicit source replacement and removal;

@@ -50,6 +50,31 @@ fn focus_with_radius(x: f64, y: f64, z: f64, radius: u32) -> StreamingTick {
     StreamingTick::from_demand_transaction(transaction)
 }
 
+fn source_focus(source_id: u64, priority: u32, x: f64) -> DemandSourceChange {
+    let focus = DemandFocus::try_new(
+        WorldPosition::try_new(WorldId(7), [x, 0.0, 0.0]).unwrap(),
+        0,
+        0,
+        0,
+        0,
+        DemandDistanceOrder::NearestFirst,
+    )
+    .unwrap();
+    DemandSourceChange::Replace {
+        source_id: DemandSourceId::new(source_id),
+        snapshot: DemandSourceSnapshot::try_new(
+            DemandSourcePriority::new(priority),
+            Some(focus),
+            [],
+        )
+        .unwrap(),
+    }
+}
+
+fn transaction_tick(changes: impl IntoIterator<Item = DemandSourceChange>) -> StreamingTick {
+    StreamingTick::from_demand_transaction(DemandTransaction::try_new(changes).unwrap())
+}
+
 fn provider_event(request: &StreamRequest, kind: ProviderEventKind) -> ProviderEvent {
     ProviderEvent {
         request_id: request.request_id,
@@ -508,5 +533,139 @@ fn invalid_demand_transaction_leaves_controller_state_unchanged() {
     assert_eq!(
         controller.pending_requests().copied().collect::<Vec<_>>(),
         pending_before
+    );
+}
+
+#[test]
+fn unissued_queues_refresh_rank_without_lifecycle_churn() {
+    let mut controller = controller(0, 0);
+    controller
+        .tick(transaction_tick([
+            source_focus(1, 1, 0.0),
+            source_focus(2, 0, 16.0),
+        ]))
+        .unwrap();
+    let first = ChunkId::new(WorldId(7), ChunkCoord3 { x: 0, y: 0, z: 0 });
+    let second = ChunkId::new(WorldId(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
+    assert_eq!(
+        controller.record(first).unwrap().state,
+        ChunkLifecycleState::LoadQueued
+    );
+    let refreshed = controller
+        .tick(transaction_tick([source_focus(2, 2, 16.0)]))
+        .unwrap();
+    assert!(refreshed.requests.is_empty());
+    assert!(refreshed.events.is_empty());
+    assert_eq!(controller.record(second).unwrap().priority.get(), 0);
+    assert_eq!(
+        controller.record(first).unwrap().state,
+        ChunkLifecycleState::LoadQueued
+    );
+    controller.set_budgets(StreamingBudgets {
+        max_load_requests_per_tick: 1,
+        max_unload_requests_per_tick: 0,
+    });
+    let issued = controller
+        .tick(StreamingTick::without_demand_changes())
+        .unwrap();
+    assert_eq!(issued.requests[0].chunk_id, second);
+}
+
+#[test]
+fn overlapping_best_source_switch_and_in_flight_refresh_do_not_churn_requests() {
+    let mut controller = controller(1, 0);
+    let chunk = ChunkId::new(WorldId(7), ChunkCoord3 { x: 0, y: 0, z: 0 });
+    let first = controller
+        .tick(transaction_tick([
+            source_focus(1, 2, 0.0),
+            source_focus(2, 1, 0.0),
+        ]))
+        .unwrap()
+        .requests[0];
+    let update = controller
+        .tick(transaction_tick([source_focus(1, 0, 0.0)]))
+        .unwrap();
+    assert!(update.requests.is_empty());
+    assert!(update.events.is_empty());
+    assert_eq!(
+        controller.record(chunk).unwrap().state,
+        ChunkLifecycleState::LoadRequested
+    );
+    assert_eq!(
+        controller.pending_requests().copied().collect::<Vec<_>>(),
+        vec![first]
+    );
+    controller
+        .accept_provider_event(provider_event(&first, ProviderEventKind::Started))
+        .unwrap();
+    controller
+        .accept_provider_event(provider_event(&first, ProviderEventKind::Completed))
+        .unwrap();
+    assert_eq!(
+        controller.record(chunk).unwrap().state,
+        ChunkLifecycleState::Resident
+    );
+    let overlap = controller
+        .tick(transaction_tick([DemandSourceChange::Remove {
+            source_id: DemandSourceId::new(1),
+        }]))
+        .unwrap();
+    assert!(overlap.events.is_empty());
+    assert_eq!(
+        controller.record(chunk).unwrap().state,
+        ChunkLifecycleState::Resident
+    );
+}
+
+#[test]
+fn demand_limit_replacement_applies_delta_without_issuing_and_failure_is_atomic() {
+    let limits = DemandLimits::try_new(3, 9, 9, 3).unwrap();
+    let mut config = WorldStreamingConfig::new(WorldId(7), partition(), limits);
+    config.budgets = StreamingBudgets {
+        max_load_requests_per_tick: 0,
+        max_unload_requests_per_tick: 0,
+    };
+    let mut controller = WorldStreamingController::new(config);
+    controller
+        .tick(transaction_tick([
+            source_focus(1, 0, 0.0),
+            source_focus(2, 1, 16.0),
+            source_focus(3, 2, 32.0),
+        ]))
+        .unwrap();
+    let events = controller
+        .replace_demand_limits(DemandLimits::try_new(3, 9, 9, 1).unwrap())
+        .unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == WorldStreamingEventKind::UnloadQueued)
+            .count(),
+        0
+    );
+    assert_eq!(
+        controller.records().filter(|record| record.desired).count(),
+        1
+    );
+    let records = controller.records().copied().collect::<Vec<_>>();
+    let snapshot = controller.effective_demand().clone();
+    assert!(
+        controller
+            .replace_demand_limits(DemandLimits::try_new(3, 9, 2, 1).unwrap())
+            .is_err()
+    );
+    assert_eq!(controller.records().copied().collect::<Vec<_>>(), records);
+    assert_eq!(controller.effective_demand(), &snapshot);
+    controller.set_budgets(StreamingBudgets {
+        max_load_requests_per_tick: 1,
+        max_unload_requests_per_tick: 0,
+    });
+    assert_eq!(
+        controller
+            .tick(StreamingTick::without_demand_changes())
+            .unwrap()
+            .requests
+            .len(),
+        1
     );
 }

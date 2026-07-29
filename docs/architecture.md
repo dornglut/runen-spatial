@@ -37,8 +37,8 @@ No universal residency manager spans these layers.
 
 ## Current implementation
 
-The current implementation includes accepted multi-source spatial demand and
-the lifecycle baseline while applying checked spatial contracts:
+The current implementation includes multi-source spatial demand and the
+lifecycle baseline while applying checked spatial contracts:
 
 - stable chunk, region, and clipmap coordinates use signed `i64` components;
 - demand sources publish complete snapshots that merge into effective demand;
