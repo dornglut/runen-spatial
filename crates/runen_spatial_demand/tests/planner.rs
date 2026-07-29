@@ -768,16 +768,16 @@ fn candidate_and_callback_failures_are_atomic_and_callbacks_observe_precommit_st
 fn checked_focus_boundaries_and_extreme_pins_are_safe() {
     let mut planner = planner(DemandLimits::try_new(1, u32::MAX, u32::MAX, u32::MAX).unwrap());
     let before = planner.effective_snapshot().clone();
-    let near_maximum = (i64::MAX - 4_096) as f64;
+    let out_of_range = f64::MAX;
     let overflow = planner.replace_source(
         DemandSourceId::new(1),
         snapshot(
             0,
             Some(focus(
                 WorldId(7),
-                [near_maximum, 0.0, 0.0],
-                4_096,
-                4_096,
+                [out_of_range, 0.0, 0.0],
+                0,
+                0,
                 DemandDistanceOrder::NearestFirst,
             )),
             [],
@@ -786,8 +786,8 @@ fn checked_focus_boundaries_and_extreme_pins_are_safe() {
     assert!(matches!(
         overflow,
         Err(SpatialDemandError::SpatialMath(
-            SpatialMathError::ArithmeticOverflow {
-                operation: "demand chunk range"
+            SpatialMathError::CoordinateOutOfRange {
+                operation: "chunk x"
             }
         ))
     ));
