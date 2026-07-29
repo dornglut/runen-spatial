@@ -126,7 +126,13 @@ impl GridPartitionConfig {
                 operation: "chunk origin",
             });
         }
-        WorldPosition::try_new(world_id, meters)
+        let position = WorldPosition::try_new(world_id, meters)?;
+        if self.chunk_coord_from_world_position(position)? != chunk {
+            return Err(SpatialMathError::PrecisionLoss {
+                operation: "chunk origin",
+            });
+        }
+        Ok(position)
     }
 }
 

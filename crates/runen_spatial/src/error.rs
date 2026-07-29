@@ -11,6 +11,7 @@ pub enum SpatialMathError {
     LevelCountZero,
     LevelOutOfRange { level: u8, level_count: u8 },
     CoordinateOutOfRange { operation: &'static str },
+    PrecisionLoss { operation: &'static str },
     ArithmeticOverflow { operation: &'static str },
     WorldMismatch { expected: WorldId, actual: WorldId },
     LocalPositionOutOfRange { axis: u8 },

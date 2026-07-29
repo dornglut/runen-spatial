@@ -31,6 +31,11 @@ coordinates map consistently across chunk boundaries.
 interpreted through explicit checked conversion with a translation-only
 `WorldFrame`. Hosts select another frame when they rebase.
 
+Global-to-local-to-global conversion is intentionally bounded by the `f32`
+rounding of the local value. Tests use an axis tolerance of
+`f32::EPSILON * max(abs(local_axis), 1)` after conversion rather than claiming
+bit-exact recovery for values not representable in `f32`.
+
 `GridPartitionConfig` maps validated global positions to chunk coordinates and
 chunk coordinates to region coordinates. Its edge and dimensions are checked;
 invalid configuration is rejected rather than clamped.

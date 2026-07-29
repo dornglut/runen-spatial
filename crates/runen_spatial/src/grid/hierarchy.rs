@@ -126,52 +126,50 @@ impl HierarchicalGridConfig {
         &self,
         level: GridLevel,
         coord: ChunkCoord3,
-    ) -> Result<ChunkCoord3, SpatialMathError> {
+    ) -> Result<Option<ChunkCoord3>, SpatialMathError> {
         if self.parent_level(level)?.is_none() {
-            return Err(SpatialMathError::LevelOutOfRange {
-                level: level.0,
-                level_count: self.level_count,
-            });
+            return Ok(None);
         }
         let scale = i64::from(self.level_scale_factor);
-        Ok(ChunkCoord3 {
+        Ok(Some(ChunkCoord3 {
             x: coord.x.div_euclid(scale),
             y: coord.y.div_euclid(scale),
             z: coord.z.div_euclid(scale),
-        })
+        }))
     }
 
     pub fn first_child_coord(
         &self,
         level: GridLevel,
         coord: ChunkCoord3,
-    ) -> Result<ChunkCoord3, SpatialMathError> {
+    ) -> Result<Option<ChunkCoord3>, SpatialMathError> {
         if self.child_level(level)?.is_none() {
-            return Err(SpatialMathError::LevelOutOfRange {
-                level: level.0,
-                level_count: self.level_count,
-            });
+            return Ok(None);
         }
-        coord.checked_mul(i64::from(self.level_scale_factor)).ok_or(
-            SpatialMathError::ArithmeticOverflow {
-                operation: "first child coordinate",
-            },
-        )
+        Ok(Some(
+            coord
+                .checked_mul(i64::from(self.level_scale_factor))
+                .ok_or(SpatialMathError::ArithmeticOverflow {
+                    operation: "first child coordinate",
+                })?,
+        ))
     }
 
     pub fn child_coord_bounds(
         &self,
         level: GridLevel,
         coord: ChunkCoord3,
-    ) -> Result<(ChunkCoord3, ChunkCoord3), SpatialMathError> {
-        let first = self.first_child_coord(level, coord)?;
+    ) -> Result<Option<(ChunkCoord3, ChunkCoord3)>, SpatialMathError> {
+        let Some(first) = self.first_child_coord(level, coord)? else {
+            return Ok(None);
+        };
         let offset = i64::from(self.level_scale_factor) - 1;
         let last = first.checked_offset(offset, offset, offset).ok_or(
             SpatialMathError::ArithmeticOverflow {
                 operation: "last child coordinate",
             },
         )?;
-        Ok((first, last))
+        Ok(Some((first, last)))
     }
 }
 
@@ -198,11 +196,14 @@ impl HierarchicalChunkId {
         config: &HierarchicalGridConfig,
     ) -> Result<Option<Self>, SpatialMathError> {
         match config.parent_level(self.level)? {
-            Some(level) => Ok(Some(Self {
-                world_id: self.world_id,
-                level,
-                coord: config.parent_coord(self.level, self.coord)?,
-            })),
+            Some(level) => match config.parent_coord(self.level, self.coord)? {
+                Some(coord) => Ok(Some(Self {
+                    world_id: self.world_id,
+                    level,
+                    coord,
+                })),
+                None => Ok(None),
+            },
             None => Ok(None),
         }
     }

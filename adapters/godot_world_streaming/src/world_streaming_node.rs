@@ -1,7 +1,7 @@
 use godot::builtin::{Dictionary, GString, Variant, Vector3};
 use godot::classes::{INode, Node};
 use godot::prelude::*;
-use runen_spatial::{ChunkId, GridPartitionConfig, WorldId, WorldPosition};
+use runen_spatial::{ChunkId, GridPartitionConfig, SpatialMathError, WorldId, WorldPosition};
 use runen_spatial_demand::{
     ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
 };
@@ -101,7 +101,14 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn set_chunk_edge_meters(&mut self, value: f32) {
-        self.chunk_edge_meters = value.max(1.0);
+        if let Err(error) = partition_from_node_values(
+            value,
+            [self.region_dim_x, self.region_dim_y, self.region_dim_z],
+        ) {
+            self.report_spatial_error(error);
+            return;
+        }
+        self.chunk_edge_meters = value;
         self.rebuild_controller();
     }
 
@@ -112,9 +119,18 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn set_region_chunk_dims(&mut self, x: i32, y: i32, z: i32) {
-        self.region_dim_x = x.max(1) as u32;
-        self.region_dim_y = y.max(1) as u32;
-        self.region_dim_z = z.max(1) as u32;
+        let dims = match requested_region_dims([x, y, z]) {
+            Ok(dims) => dims,
+            Err(error) => {
+                self.report_spatial_error(error);
+                return;
+            }
+        };
+        if let Err(error) = partition_from_node_values(self.chunk_edge_meters, dims) {
+            self.report_spatial_error(error);
+            return;
+        }
+        [self.region_dim_x, self.region_dim_y, self.region_dim_z] = dims;
         self.rebuild_controller();
     }
 
@@ -373,19 +389,17 @@ impl GodotWorldStreamingNode {
     }
 
     fn rebuild_controller(&mut self) {
-        self.controller = Some(WorldStreamingController::new(self.streaming_config()));
+        match self.streaming_config() {
+            Ok(config) => self.controller = Some(WorldStreamingController::new(config)),
+            Err(error) => self.report_spatial_error(error),
+        }
     }
 
-    fn streaming_config(&self) -> WorldStreamingConfig {
-        let partition = GridPartitionConfig::try_new(
-            f64::from(self.chunk_edge_meters.max(1.0)),
-            [
-                self.region_dim_x.max(1),
-                self.region_dim_y.max(1),
-                self.region_dim_z.max(1),
-            ],
-        )
-        .expect("adapter-maintained partition configuration is valid");
+    fn streaming_config(&self) -> Result<WorldStreamingConfig, SpatialMathError> {
+        let partition = partition_from_node_values(
+            self.chunk_edge_meters,
+            [self.region_dim_x, self.region_dim_y, self.region_dim_z],
+        )?;
 
         let mut config = WorldStreamingConfig::new(
             WorldId(self.world_id),
@@ -404,7 +418,12 @@ impl GodotWorldStreamingNode {
             },
         );
         config.budgets = self.streaming_budgets();
-        config
+        Ok(config)
+    }
+
+    fn report_spatial_error(&mut self, error: SpatialMathError) {
+        let message = GString::from(format!("{error:?}").as_str());
+        self.signals().streaming_error().emit(&message);
     }
 
     fn streaming_budgets(&self) -> StreamingBudgets {
@@ -427,6 +446,38 @@ impl GodotWorldStreamingNode {
     }
 }
 
+fn requested_region_dims(requested: [i32; 3]) -> Result<[u32; 3], SpatialMathError> {
+    for (axis, value) in requested.iter().enumerate() {
+        if *value <= 0 {
+            return Err(SpatialMathError::NonPositiveValue {
+                field: match axis {
+                    0 => "region_dim_x",
+                    1 => "region_dim_y",
+                    _ => "region_dim_z",
+                },
+            });
+        }
+    }
+    Ok([
+        u32::try_from(requested[0]).map_err(|_| SpatialMathError::CoordinateOutOfRange {
+            operation: "region_dim_x",
+        })?,
+        u32::try_from(requested[1]).map_err(|_| SpatialMathError::CoordinateOutOfRange {
+            operation: "region_dim_y",
+        })?,
+        u32::try_from(requested[2]).map_err(|_| SpatialMathError::CoordinateOutOfRange {
+            operation: "region_dim_z",
+        })?,
+    ])
+}
+
+fn partition_from_node_values(
+    chunk_edge_meters: f32,
+    region_chunk_dims: [u32; 3],
+) -> Result<GridPartitionConfig, SpatialMathError> {
+    GridPartitionConfig::try_new(f64::from(chunk_edge_meters), region_chunk_dims)
+}
+
 fn request_id_to_i64(request_id: StreamRequestId) -> i64 {
     i64::try_from(request_id.0).unwrap_or(i64::MAX)
 }
@@ -434,4 +485,39 @@ fn request_id_to_i64(request_id: StreamRequestId) -> i64 {
 #[allow(dead_code)]
 fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
     (chunk_id.coord.x, chunk_id.coord.y, chunk_id.coord.z)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{partition_from_node_values, requested_region_dims};
+    use runen_spatial::SpatialMathError;
+
+    #[test]
+    fn partition_values_reject_invalid_edges_without_repairing_them() {
+        for edge in [0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(matches!(
+                partition_from_node_values(edge, [8, 8, 8]),
+                Err(SpatialMathError::NonFiniteValue { .. })
+                    | Err(SpatialMathError::NonPositiveValue { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn requested_region_dimensions_reject_nonpositive_values() {
+        for dimensions in [[0, 8, 8], [-1, 8, 8], [8, 0, 8], [8, 8, -1]] {
+            assert!(matches!(
+                requested_region_dims(dimensions),
+                Err(SpatialMathError::NonPositiveValue { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn valid_partition_update_builds_the_requested_configuration() {
+        let config =
+            partition_from_node_values(24.0, requested_region_dims([3, 4, 5]).unwrap()).unwrap();
+        assert_eq!(config.chunk_edge_meters(), 24.0);
+        assert_eq!(config.region_chunk_dims(), [3, 4, 5]);
+    }
 }

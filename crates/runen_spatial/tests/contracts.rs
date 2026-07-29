@@ -80,6 +80,52 @@ fn positions_and_frames_are_finite_namespaced_and_translation_only() {
         ),
         Err(SpatialMathError::LocalPositionOutOfRange { .. })
     ));
+
+    let precise_global = WorldPosition::try_new(WorldId(1), [10.1, -1.7, 3.333_333_3]).unwrap();
+    let precise_local = frame.to_local(precise_global).unwrap();
+    let round_trip = frame.to_global(precise_local).unwrap();
+    for axis in 0..3 {
+        let expected = precise_global.meters()[axis];
+        let tolerance =
+            f64::from(f32::EPSILON) * f64::from(precise_local.meters()[axis].abs().max(1.0));
+        assert!((round_trip.meters()[axis] - expected).abs() <= tolerance);
+    }
+}
+
+#[test]
+fn chunk_origin_preserves_the_stable_coordinate_or_rejects_precision_loss() {
+    let coordinates = [
+        i64::MIN,
+        -(1_i64 << 53) - 1,
+        -(1_i64 << 53),
+        -(1_i64 << 53) + 1,
+        (1_i64 << 53) - 1,
+        1_i64 << 53,
+        (1_i64 << 53) + 1,
+        i64::MAX,
+    ];
+    for edge in [0.5, 1.0, 16.0, 32.0] {
+        let partition = GridPartitionConfig::try_new(edge, [1, 1, 1]).unwrap();
+        for coordinate in coordinates {
+            let chunk = ChunkCoord3 {
+                x: coordinate,
+                y: coordinate,
+                z: coordinate,
+            };
+            match partition.chunk_origin_world_position(WorldId(3), chunk) {
+                Ok(position) => assert_eq!(
+                    partition.chunk_coord_from_world_position(position).unwrap(),
+                    chunk
+                ),
+                Err(
+                    SpatialMathError::PrecisionLoss { .. }
+                    | SpatialMathError::CoordinateOutOfRange { .. }
+                    | SpatialMathError::ArithmeticOverflow { .. },
+                ) => {}
+                Err(error) => panic!("unexpected chunk-origin error: {error:?}"),
+            }
+        }
+    }
 }
 
 #[test]
@@ -139,18 +185,36 @@ fn hierarchy_is_finest_to_coarsest_with_checked_bounds() {
     assert_eq!(config.child_level(GridLevel(0)).unwrap(), None);
     assert_eq!(
         config
+            .parent_coord(GridLevel(2), ChunkCoord3::default())
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        config
+            .first_child_coord(GridLevel(0), ChunkCoord3::default())
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        config
+            .child_coord_bounds(GridLevel(0), ChunkCoord3::default())
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        config
             .parent_coord(GridLevel(0), ChunkCoord3 { x: -1, y: 3, z: 0 })
             .unwrap(),
-        ChunkCoord3 { x: -1, y: 1, z: 0 }
+        Some(ChunkCoord3 { x: -1, y: 1, z: 0 })
     );
     assert_eq!(
         config
             .child_coord_bounds(GridLevel(1), ChunkCoord3 { x: -1, y: 0, z: 1 })
             .unwrap(),
-        (
+        Some((
             ChunkCoord3 { x: -2, y: 0, z: 2 },
             ChunkCoord3 { x: -1, y: 1, z: 3 }
-        )
+        ))
     );
     assert_eq!(
         HierarchicalChunkId::new(WorldId(1), GridLevel(2), ChunkCoord3::default())
@@ -173,6 +237,60 @@ fn hierarchy_is_finest_to_coarsest_with_checked_bounds() {
         HierarchicalGridConfig::try_new(1.0, 0, 2),
         Err(SpatialMathError::LevelCountZero)
     ));
+    assert!(matches!(
+        config.parent_coord(GridLevel(3), ChunkCoord3::default()),
+        Err(SpatialMathError::LevelOutOfRange { .. })
+    ));
+    assert!(matches!(
+        config.first_child_coord(GridLevel(3), ChunkCoord3::default()),
+        Err(SpatialMathError::LevelOutOfRange { .. })
+    ));
+}
+
+#[test]
+fn hierarchy_child_bounds_cover_each_parent_without_overlap() {
+    for scale in [2, 3, 4] {
+        let config = HierarchicalGridConfig::try_new(1.0, 3, scale).unwrap();
+        for x in -17..=17 {
+            for y in -17..=17 {
+                for z in -17..=17 {
+                    let parent = ChunkCoord3 { x, y, z };
+                    let (minimum, maximum) = config
+                        .child_coord_bounds(GridLevel(1), parent)
+                        .unwrap()
+                        .unwrap();
+                    let mut count = 0_u32;
+                    for child_x in minimum.x..=maximum.x {
+                        for child_y in minimum.y..=maximum.y {
+                            for child_z in minimum.z..=maximum.z {
+                                count += 1;
+                                assert_eq!(
+                                    config
+                                        .parent_coord(
+                                            GridLevel(0),
+                                            ChunkCoord3 {
+                                                x: child_x,
+                                                y: child_y,
+                                                z: child_z,
+                                            },
+                                        )
+                                        .unwrap(),
+                                    Some(parent)
+                                );
+                            }
+                        }
+                    }
+                    assert_eq!(count, scale.pow(3));
+                    let next_parent = ChunkCoord3 { x: x + 1, y, z };
+                    let (next_minimum, _) = config
+                        .child_coord_bounds(GridLevel(1), next_parent)
+                        .unwrap()
+                        .unwrap();
+                    assert!(maximum.x < next_minimum.x);
+                }
+            }
+        }
+    }
 }
 
 #[test]

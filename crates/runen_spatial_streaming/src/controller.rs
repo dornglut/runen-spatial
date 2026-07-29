@@ -9,6 +9,9 @@ use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, WorldId};
 use runen_spatial_demand::{ChunkSetDiff, ChunkStreamer, ChunkStreamingConfig, StreamingFocus};
 use std::collections::BTreeMap;
 
+type RankedChunk = (ChunkCoord3, ChunkPriority);
+type PreparedChunkDiff = (Vec<RankedChunk>, Vec<RankedChunk>);
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct StreamingBudgets {
     pub max_load_requests_per_tick: usize,
@@ -155,15 +158,13 @@ impl WorldStreamingController {
                     },
                 ));
             }
-            let center = self
+            let update = self
                 .streamer
-                .center_chunk_for_focus(focus)
+                .preview_focus_update(focus)
                 .map_err(WorldStreamingError::SpatialMath)?;
-            let diff = self
-                .streamer
-                .update_focus(focus)
-                .map_err(WorldStreamingError::SpatialMath)?;
-            self.apply_chunk_diff(center, diff, &mut events);
+            let priorities = self.prepare_chunk_diff(update.center(), update.diff())?;
+            self.apply_prepared_chunk_diff(priorities, &mut events);
+            self.streamer.apply_focus_update(update);
         }
 
         let mut requests = Vec::new();
@@ -377,21 +378,72 @@ impl WorldStreamingController {
         Ok(event)
     }
 
-    fn apply_chunk_diff(
-        &mut self,
+    fn prepare_chunk_diff(
+        &self,
         center: ChunkCoord3,
-        diff: ChunkSetDiff,
+        diff: &ChunkSetDiff,
+    ) -> Result<PreparedChunkDiff, WorldStreamingError> {
+        let entered = diff
+            .entered
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(rank, coord)| {
+                let rank = u32::try_from(rank).map_err(|_| {
+                    WorldStreamingError::SpatialMath(
+                        runen_spatial::SpatialMathError::ArithmeticOverflow {
+                            operation: "streaming priority rank",
+                        },
+                    )
+                })?;
+                Ok((
+                    coord,
+                    ChunkPriority::new(
+                        rank,
+                        distance_squared(coord, center)
+                            .map_err(WorldStreamingError::SpatialMath)?,
+                    ),
+                ))
+            })
+            .collect::<Result<Vec<_>, WorldStreamingError>>()?;
+        let exited = diff
+            .exited
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(rank, coord)| {
+                let rank = u32::try_from(rank).map_err(|_| {
+                    WorldStreamingError::SpatialMath(
+                        runen_spatial::SpatialMathError::ArithmeticOverflow {
+                            operation: "streaming priority rank",
+                        },
+                    )
+                })?;
+                Ok((
+                    coord,
+                    ChunkPriority::new(
+                        rank,
+                        distance_squared(coord, center)
+                            .map_err(WorldStreamingError::SpatialMath)?,
+                    ),
+                ))
+            })
+            .collect::<Result<Vec<_>, WorldStreamingError>>()?;
+        Ok((entered, exited))
+    }
+
+    fn apply_prepared_chunk_diff(
+        &mut self,
+        priorities: PreparedChunkDiff,
         events: &mut Vec<WorldStreamingEvent>,
     ) {
-        for (rank, coord) in diff.entered.into_iter().enumerate() {
+        for (coord, priority) in priorities.0 {
             let chunk_id = ChunkId::new(self.world_id, coord);
-            let priority = ChunkPriority::new(rank as u32, distance_squared(coord, center));
             self.mark_desired(chunk_id, priority, events);
         }
 
-        for (rank, coord) in diff.exited.into_iter().enumerate() {
+        for (coord, priority) in priorities.1 {
             let chunk_id = ChunkId::new(self.world_id, coord);
-            let priority = ChunkPriority::new(rank as u32, distance_squared(coord, center));
             self.mark_undesired(chunk_id, priority, events);
         }
     }
