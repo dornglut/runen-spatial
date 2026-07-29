@@ -4,6 +4,55 @@ use runen_spatial::{
     SpatialMathError, WorldFrame, WorldId, WorldPosition, clipmap_coord_from_world_position,
     clipmap_window_for_center, ring_slot_for_coord,
 };
+use serde::Deserialize;
+use serde::de::{Deserializer, IntoDeserializer, Visitor, value};
+
+#[derive(Clone)]
+enum TestValue {
+    F64(f64),
+    U8(u8),
+    U32(u32),
+    U32Array([u32; 3]),
+}
+
+impl<'de> IntoDeserializer<'de, value::Error> for TestValue {
+    type Deserializer = Self;
+
+    fn into_deserializer(self) -> Self::Deserializer {
+        self
+    }
+}
+
+impl<'de> Deserializer<'de> for TestValue {
+    type Error = value::Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        match self {
+            Self::F64(value) => visitor.visit_f64(value),
+            Self::U8(value) => visitor.visit_u8(value),
+            Self::U32(value) => visitor.visit_u32(value),
+            Self::U32Array(values) => visitor.visit_seq(value::SeqDeserializer::new(
+                values.into_iter().map(IntoDeserializer::into_deserializer),
+            )),
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+        option unit unit_struct newtype_struct seq tuple tuple_struct map struct enum identifier
+        ignored_any
+    }
+}
+
+fn deserialize_config<T>(fields: Vec<(&'static str, TestValue)>) -> Result<T, value::Error>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    T::deserialize(value::MapDeserializer::new(fields.into_iter()))
+}
 
 #[test]
 fn positions_and_frames_are_finite_namespaced_and_translation_only() {
@@ -183,4 +232,29 @@ fn clipmap_and_ring_are_checked_mapping_primitives() {
         RingBufferConfig::try_new([0, 1, 1]),
         Err(SpatialMathError::ZeroDimension { .. })
     ));
+}
+
+#[test]
+fn checked_config_deserialization_rejects_invalid_values() {
+    assert!(
+        deserialize_config::<HierarchicalGridConfig>(vec![
+            ("base_chunk_edge_meters", TestValue::F64(1.0)),
+            ("level_count", TestValue::U8(0)),
+            ("level_scale_factor", TestValue::U32(2)),
+        ])
+        .is_err()
+    );
+    assert!(
+        deserialize_config::<ClipmapConfig>(vec![
+            ("base_cell_edge_meters", TestValue::F64(1.0)),
+            ("level_count", TestValue::U8(1)),
+            ("level_scale_factor", TestValue::U32(2)),
+            ("window_dims", TestValue::U32Array([2, 3, 3])),
+        ])
+        .is_err()
+    );
+    assert!(
+        deserialize_config::<RingBufferConfig>(vec![("dims", TestValue::U32Array([0, 1, 1]),)])
+            .is_err()
+    );
 }
