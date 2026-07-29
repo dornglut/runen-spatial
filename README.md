@@ -21,19 +21,18 @@ Start with [Architecture](ARCHITECTURE.md), [Agent Guide](AGENTS.md), and [Testi
 
 ## Current workspace
 
-The transferred package names remain unchanged during governance normalization:
+The current workspace uses explicit RunenSpatial package identities:
 
 ```text
-crates/spatial
-crates/spatial_index
-crates/chunking
-crates/world_streaming
-crates/world_core_prelude
+crates/runen_spatial
+crates/runen_spatial_index
+crates/runen_spatial_demand
+crates/runen_spatial_streaming
 adapters/godot_world_streaming
 demos/chunk_streaming_demo
 ```
 
-The provisional Runen-family package map and decision gates are documented in [package boundaries](docs/package-boundaries.md). `world_core_prelude` is accepted for later deletion; it is not the target ordinary entry point.
+The [package boundaries](docs/package-boundaries.md) record the accepted package map and decision gates. The non-owning `world_core_prelude` package has been removed; consumers import directly from the package that owns each concept.
 
 The Godot adapter remains optional, non-default, experimental, and non-publishable pending an ownership and lifecycle audit.
 
@@ -55,9 +54,8 @@ RunenSpatial is not yet a production-complete infinite-world or multi-consumer s
 - [Validation contract](docs/tooling/validation.md)
 - [Durable roadmap](docs/roadmap.md)
 - [Parent outcome issue](https://github.com/dornglut/runen-spatial/issues/1)
-- [Current governance and validation issue](https://github.com/dornglut/runen-spatial/issues/4)
 
-Issues own accepted live work. Pull requests and exact-head CI own implementation evidence. Durable documents do not track active branch, PR, SHA, or workflow inventories.
+Issues own accepted live work; begin at the [parent outcome issue](https://github.com/dornglut/runen-spatial/issues/1) and follow its current child. Pull requests and exact-head CI own implementation evidence. Durable documents do not track active branch, PR, SHA, or workflow inventories.
 
 ## Validation
 

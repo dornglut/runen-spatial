@@ -1,7 +1,10 @@
-use world_core_prelude::{
-    ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, GridPartitionConfig, ProviderEvent,
-    ProviderEventKind, StreamRequest, StreamRequestKind, StreamingBudgets, StreamingFocus,
-    StreamingTick, WorldId, WorldStreamingConfig, WorldStreamingController,
+use runen_spatial::{GridPartitionConfig, WorldId};
+use runen_spatial_demand::{
+    ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
+};
+use runen_spatial_streaming::{
+    ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestKind, StreamingBudgets,
+    StreamingTick, WorldStreamingConfig, WorldStreamingController,
 };
 
 fn main() {

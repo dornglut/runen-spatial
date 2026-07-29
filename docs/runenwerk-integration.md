@@ -1,6 +1,6 @@
 # Runenwerk Integration
 
-Runenwerk has not completed a dependency cutover to RunenSpatial. The repositories currently contain duplicate spatial, demand, and streaming authority, and Runenwerk still owns a mixed engine chunk lifecycle.
+Runenwerk has not completed a dependency cutover to RunenSpatial. The repositories currently contain duplicate spatial, demand, and streaming authority, and Runenwerk still owns a mixed engine chunk lifecycle. Any later cutover consumes the explicit `runen-spatial` package family directly.
 
 This document defines the future integration boundary only. Live execution is owned by repository issues.
 

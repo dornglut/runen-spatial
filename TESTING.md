@@ -2,6 +2,9 @@
 
 `cargo validate` is the single maintained local and CI validation authority for RunenSpatial.
 
+It validates the current `runen-spatial` package family and rejects retired
+package identities and the deleted broad prelude.
+
 It verifies:
 
 - repository policy, required files, manifest inventory, package metadata, publication state, and dependency containment;

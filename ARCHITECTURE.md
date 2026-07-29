@@ -10,7 +10,7 @@ One streaming controller governs one host-defined neutral availability class. It
 
 ## Dependency direction
 
-The current transferred package names remain temporary during RS1. Core packages must depend only toward lower-level RunenSpatial packages and repository-contained dependencies. Optional adapters may depend on core packages; core packages must not depend on adapters, Runenwerk, Godot, rendering, or GPU systems.
+The current package direction is `runen-spatial-index -> runen-spatial`, `runen-spatial-demand -> runen-spatial`, and `runen-spatial-streaming -> runen-spatial-demand -> runen-spatial`. Core packages must depend only toward lower-level RunenSpatial packages and repository-contained dependencies. Optional adapters may depend on core packages; core packages must not depend on adapters, Runenwerk, Godot, rendering, or GPU systems.
 
 No compatibility façade or copied source authority is an accepted final state.
 

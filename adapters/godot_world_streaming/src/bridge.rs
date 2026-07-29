@@ -1,6 +1,6 @@
 use godot::builtin::Vector3;
-use spatial::{ChunkCoord3, ChunkId, WorldId};
-use world_streaming::{ProviderEvent, ProviderEventKind, StreamRequestId};
+use runen_spatial::{ChunkCoord3, ChunkId, WorldId};
+use runen_spatial_streaming::{ProviderEvent, ProviderEventKind, StreamRequestId};
 
 pub fn vector3_to_meters(value: Vector3) -> [f32; 3] {
     [value.x, value.y, value.z]

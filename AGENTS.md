@@ -17,6 +17,16 @@ RunenSpatial owns host-neutral spatial mechanics. It must not acquire world-prod
 7. Use exact-head GitHub Actions as merge evidence.
 8. Update durable docs only when architecture, ownership, sequence, or provenance changes; do not store live branch, PR, SHA, or workflow inventories in them.
 
+## Cold-start pickup
+
+1. Read the repository authorities listed above.
+2. Open parent issue #1.
+3. Follow its Current child.
+4. Read that child’s latest status comment.
+5. Inspect its associated pull request and exact-head CI.
+6. Fetch and verify origin/main before branching.
+7. Never infer live execution state from durable roadmap prose.
+
 ## Public API rules
 
 - Prefer explicit domain types and validated construction.

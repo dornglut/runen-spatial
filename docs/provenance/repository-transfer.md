@@ -12,6 +12,8 @@ Key revisions:
 
 - transferred source baseline: `2a87094cb4ca4ed48238b416f4d4121cb5e074a1`;
 - first accepted Dornglut architecture revision: `8d5dae4123dd3e67f572f3c0c32aac7362975aaf`.
+- accepted RS1 governance and validation baseline:
+  `db69f176194bdd3730558acbe0c84dfe5d3ddf59`.
 
 The earlier name and owner are provenance evidence only. They are not current package, documentation, or execution authority.
 

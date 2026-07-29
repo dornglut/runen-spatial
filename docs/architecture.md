@@ -35,7 +35,26 @@ RunenGPU
 
 No universal residency manager spans these layers.
 
-## Owned concepts
+## Current implementation
+
+The current implementation retains the inherited behavioral baseline while
+package identities are normalized:
+
+- stable chunk and region coordinates use signed `i32` components;
+- demand is single-focus;
+- streaming uses one combined lifecycle state;
+- request-ID allocation saturates.
+
+These are current implementation facts, not the accepted end-state contract.
+
+## Deferred decisions
+
+Independent publication and final retention of `runen-spatial-index` remain
+deferred to RS6. A stable serialized or wire format, backend trait,
+concurrency contract, compatibility layer, and cross-repository cutover each
+require separately accepted work.
+
+## Accepted target contract
 
 RunenSpatial owns:
 
@@ -70,9 +89,9 @@ RunenSpatial must not own:
   payload caches, retry backoff, or application recovery policy;
 - Godot scenes, nodes, assets, meshes, materials, or project-specific signals.
 
-## Package dependency direction
+## Current package identities and dependency direction
 
-The provisional target packages are:
+The workspace currently contains:
 
 ```text
 runen-spatial
@@ -101,7 +120,7 @@ and owns no actual availability state.
 host-defined availability class. It does not know product types or perform
 backend work.
 
-No broad prelude package is part of the target architecture.
+No broad prelude package is part of the architecture.
 
 ## Address model
 
@@ -114,7 +133,7 @@ Every stable chunk and region identity includes the namespace identifier.
 
 ### Stable coordinates
 
-Target stable chunk and region coordinates use signed 64-bit components.
+The accepted target uses signed 64-bit stable chunk and region coordinates.
 
 Stable coordinates:
 

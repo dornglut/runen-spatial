@@ -1,6 +1,6 @@
 # Godot Integration
 
-This documents the optional `adapters/godot_world_streaming` crate.
+This documents the optional `adapters/godot_world_streaming` crate, which depends directly on `runen-spatial`, `runen-spatial-demand`, and `runen-spatial-streaming`.
 
 The Godot adapter is adapter-only. It translates Godot-facing configuration and
 positions, ticks the core controller, and emits Godot-friendly lifecycle signals.

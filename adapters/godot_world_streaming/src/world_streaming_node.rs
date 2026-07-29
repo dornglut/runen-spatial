@@ -1,9 +1,11 @@
-use chunking::{ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus};
 use godot::builtin::{Dictionary, GString, Variant, Vector3};
 use godot::classes::{INode, Node};
 use godot::prelude::*;
-use spatial::{ChunkId, GridPartitionConfig, WorldId};
-use world_streaming::{
+use runen_spatial::{ChunkId, GridPartitionConfig, WorldId};
+use runen_spatial_demand::{
+    ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
+};
+use runen_spatial_streaming::{
     ChunkLifecycleState, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
     StreamRequestKind, StreamingBudgets, StreamingTick, WorldStreamingConfig,
     WorldStreamingController, WorldStreamingEvent, WorldStreamingEventKind,

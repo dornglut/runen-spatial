@@ -1,6 +1,6 @@
-# Chunking Model
+# Spatial Demand Model
 
-`chunking` computes desired chunk residency around a focus.
+`runen-spatial-demand` computes desired chunk residency around a focus.
 
 It answers:
 
@@ -35,4 +35,4 @@ Load radius and unload radius are separate. Chunks inside the unload radius can
 be retained even after leaving the load radius, preventing unnecessary churn when
 the focus moves near chunk boundaries.
 
-Lifecycle transitions belong in `world_streaming`, not here.
+Lifecycle transitions belong in `runen-spatial-streaming`, not here.

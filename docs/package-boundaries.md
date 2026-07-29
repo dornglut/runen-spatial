@@ -2,27 +2,26 @@
 
 ## Status
 
-This document defines the proposed package-planning baseline in the RS0 planning
-pull request. It becomes accepted only after that pull request is independently
-reviewed and merged.
+This document defines accepted RunenSpatial package architecture. It was
+accepted in RS0 and reconciled with the implemented RS2 package-identity
+migration.
 
-The plan preserves the transferred source topology while replacing inherited
-generic names and broad re-exports with explicit Runen-family ownership.
+The implementation replaces inherited generic names and broad re-exports with
+explicit RunenSpatial ownership.
 
 The final published package set remains subject to the spatial-index audit and
 downstream-consumer evidence.
 
 ## Target package map
 
-| Current package | Target package | Owns | Must not own | Decision |
-| --- | --- | --- | --- | --- |
-| `spatial` | `runen-spatial` | namespace identities, chunk/region addresses, positions, frames, partitions, hierarchy, clipmap/ring mappings, bounds, neutral spatial hashes | demand membership, availability lifecycle, IO, products, ECS, rendering, GPU, host policy | retain as foundational package |
-| `spatial_index` | `runen-spatial-index` | generic spatial-entry and query contracts over RunenSpatial identities/bounds | product meaning, collision response, ECS storage, world invalidation, rendering acceleration | provisional; retain only after audit and consumer proof |
-| `chunking` | `runen-spatial-demand` | deterministic multi-source desired spatial coverage, priority, retention, pinning, membership diffs | actual availability, backend work, IO, product purpose | retain and redesign terminology/API through a dedicated issue |
-| `world_streaming` | `runen-spatial-streaming` | demand-to-availability reconciliation for one host-defined availability class per controller, request IDs, budgets, backend events, transition state, load/unload failure facts, diagnostics | universal product registry, backend implementation, async runtime, payload types, retries/backoff policy, product readiness | retain and harden through a dedicated issue |
-| `world_core_prelude` | none | inherited broad re-exports | any durable authority | delete; no replacement façade |
-| `godot_world_streaming` | undecided | optional translation between Godot values/signals and public streaming contracts | core policy, Godot world ownership, visuals, generation, cache policy | retain temporarily as experimental, non-default, non-publishable adapter |
-| `chunk_streaming_demo` | example/conformance | public-API demonstration | architecture or dependency authority | retain; remove external project coupling and use as conformance evidence |
+| Cargo package | Rust crate | Directory | Owns | Must not own | Decision |
+| --- | --- | --- | --- | --- | --- |
+| `runen-spatial` | `runen_spatial` | `crates/runen_spatial` | namespace identities, chunk/region addresses, positions, frames, partitions, hierarchy, clipmap/ring mappings, bounds, neutral spatial hashes | demand membership, availability lifecycle, IO, products, ECS, rendering, GPU, host policy | retain as foundational package |
+| `runen-spatial-index` | `runen_spatial_index` | `crates/runen_spatial_index` | generic spatial-entry and query contracts over RunenSpatial identities/bounds | product meaning, collision response, ECS storage, world invalidation, rendering acceleration | provisional; retain only after RS6 audit and consumer proof |
+| `runen-spatial-demand` | `runen_spatial_demand` | `crates/runen_spatial_demand` | deterministic multi-source desired spatial coverage, priority, retention, pinning, membership diffs | actual availability, backend work, IO, product purpose | retain and redesign terminology/API through a dedicated issue |
+| `runen-spatial-streaming` | `runen_spatial_streaming` | `crates/runen_spatial_streaming` | demand-to-availability reconciliation for one host-defined availability class per controller, request IDs, budgets, backend events, transition state, load/unload failure facts, diagnostics | universal product registry, backend implementation, async runtime, payload types, retries/backoff policy, product readiness | retain and harden through a dedicated issue |
+| `godot_world_streaming` | `godot_world_streaming` | `adapters/godot_world_streaming` | optional translation between Godot values/signals and public streaming contracts | core policy, Godot world ownership, visuals, generation, cache policy | retain temporarily as experimental, non-default, non-publishable adapter |
+| `chunk_streaming_demo` | `chunk_streaming_demo` | `demos/chunk_streaming_demo` | public-API demonstration | architecture or dependency authority | retain as conformance evidence |
 
 ## Why the framework is not one package by default
 
@@ -154,7 +153,7 @@ availability through public lifecycle operations.
 
 ## Prelude deletion
 
-`world_core_prelude` is accepted for deletion because it:
+`world_core_prelude` was deleted in RS2 because it:
 
 - hides the owning package for each concept;
 - preserves a misleading world-core identity;
@@ -163,8 +162,8 @@ availability through public lifecycle operations.
 - has no independent algorithm, state, platform dependency, or consumer
   contract.
 
-Consumers will migrate directly to the owning packages. A forwarding crate or
-replacement wildcard prelude is not the final state.
+Consumers import directly from the owning packages. A forwarding crate or
+replacement wildcard prelude is not permitted.
 
 ## Adapter boundary
 
@@ -193,7 +192,7 @@ All packages remain unpublished until:
 
 - package boundaries are accepted;
 - package metadata and repository links are normalized;
-- `world_core_prelude` is removed;
+- the deleted broad prelude remains absent;
 - provenance and licensing are validated;
 - standalone conformance passes;
 - compatibility/versioning policy is documented;

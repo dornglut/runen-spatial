@@ -10,10 +10,10 @@ publish.workspace = true
 crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-chunking.workspace = true
 godot.workspace = true
-spatial.workspace = true
-world_streaming.workspace = true
+runen-spatial.workspace = true
+runen-spatial-demand.workspace = true
+runen-spatial-streaming.workspace = true
 
 [lints.rust]
 unsafe_code = "allow"
