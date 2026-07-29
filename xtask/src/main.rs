@@ -214,7 +214,7 @@ fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
         let manifest = fs::read_to_string(&manifest_path)
             .map_err(|error| format!("failed to read {relative}: {error}"))?;
         for package in retired {
-            let retired_name = ["name = \\\"", package, "\\\""].concat();
+            let retired_name = format!(r#"name = "{package}""#);
             if manifest
                 .lines()
                 .map(str::trim_start)
@@ -259,10 +259,30 @@ fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
                     return Err(format!("retired crate import in {relative}: {forbidden}"));
                 }
             }
+            if contains_retired_crate_path(&source, package) {
+                return Err(format!("retired crate path in {relative}: {package}::"));
+            }
         }
     }
 
     Ok(())
+}
+
+fn contains_retired_crate_path(source: &str, package: &str) -> bool {
+    let token = [package, "::"].concat();
+    let mut search_start = 0;
+
+    while let Some(relative_index) = source[search_start..].find(&token) {
+        let index = search_start + relative_index;
+        let preceding = source[..index].chars().next_back();
+        if preceding.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_')
+        {
+            return true;
+        }
+        search_start = index + token.len();
+    }
+
+    false
 }
 
 fn validate_workflow(root: &Path) -> Result<(), String> {
