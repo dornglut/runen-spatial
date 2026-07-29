@@ -1,35 +1,110 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+use crate::SpatialMathError;
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize)]
 pub struct ClipmapConfig {
-    pub base_cell_edge_meters: f32,
-    pub level_count: u8,
-    pub level_scale_factor: u32,
-    pub window_dims: [u32; 3],
+    base_cell_edge_meters: f64,
+    level_count: u8,
+    level_scale_factor: u32,
+    window_dims: [u32; 3],
+}
+
+#[derive(Deserialize)]
+struct RawClipmapConfig {
+    base_cell_edge_meters: f64,
+    level_count: u8,
+    level_scale_factor: u32,
+    window_dims: [u32; 3],
+}
+
+impl<'de> Deserialize<'de> for ClipmapConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = RawClipmapConfig::deserialize(deserializer)?;
+        Self::try_new(
+            raw.base_cell_edge_meters,
+            raw.level_count,
+            raw.level_scale_factor,
+            raw.window_dims,
+        )
+        .map_err(serde::de::Error::custom)
+    }
 }
 
 impl Default for ClipmapConfig {
     fn default() -> Self {
-        Self {
-            base_cell_edge_meters: 32.0,
-            level_count: 4,
-            level_scale_factor: 2,
-            window_dims: [17, 5, 17],
-        }
+        Self::try_new(32.0, 4, 2, [17, 5, 17]).expect("default clipmap configuration is valid")
     }
 }
 
 impl ClipmapConfig {
-    pub fn cell_edge_meters_for_level(&self, level: u8) -> f32 {
-        let factor = self.level_scale_factor.max(1) as f32;
-        self.base_cell_edge_meters.max(1.0) * factor.powi(level as i32)
+    pub fn try_new(
+        base_cell_edge_meters: f64,
+        level_count: u8,
+        level_scale_factor: u32,
+        window_dims: [u32; 3],
+    ) -> Result<Self, SpatialMathError> {
+        if !base_cell_edge_meters.is_finite() {
+            return Err(SpatialMathError::NonFiniteValue {
+                field: "base_cell_edge_meters",
+            });
+        }
+        if base_cell_edge_meters <= 0.0 {
+            return Err(SpatialMathError::NonPositiveValue {
+                field: "base_cell_edge_meters",
+            });
+        }
+        if level_count == 0 {
+            return Err(SpatialMathError::LevelCountZero);
+        }
+        if level_scale_factor < 2 {
+            return Err(SpatialMathError::ScaleFactorTooSmall {
+                scale_factor: level_scale_factor,
+            });
+        }
+        for (axis, dimension) in window_dims.iter().enumerate() {
+            if *dimension == 0 {
+                return Err(SpatialMathError::ZeroDimension { axis: axis as u8 });
+            }
+            if dimension % 2 == 0 {
+                return Err(SpatialMathError::EvenWindowDimension { axis: axis as u8 });
+            }
+        }
+        Ok(Self {
+            base_cell_edge_meters,
+            level_count,
+            level_scale_factor,
+            window_dims,
+        })
     }
 
-    pub fn clamped_window_dims(&self) -> [u32; 3] {
-        [
-            self.window_dims[0].max(1) | 1,
-            self.window_dims[1].max(1) | 1,
-            self.window_dims[2].max(1) | 1,
-        ]
+    pub fn base_cell_edge_meters(&self) -> f64 {
+        self.base_cell_edge_meters
+    }
+    pub fn level_count(&self) -> u8 {
+        self.level_count
+    }
+    pub fn level_scale_factor(&self) -> u32 {
+        self.level_scale_factor
+    }
+    pub fn window_dims(&self) -> [u32; 3] {
+        self.window_dims
+    }
+
+    pub fn cell_edge_meters_for_level(&self, level: u8) -> Result<f64, SpatialMathError> {
+        if level >= self.level_count {
+            return Err(SpatialMathError::LevelOutOfRange {
+                level,
+                level_count: self.level_count,
+            });
+        }
+        let edge =
+            self.base_cell_edge_meters * (self.level_scale_factor as f64).powi(i32::from(level));
+        if !edge.is_finite() {
+            return Err(SpatialMathError::ArithmeticOverflow {
+                operation: "clipmap cell edge",
+            });
+        }
+        Ok(edge)
     }
 }

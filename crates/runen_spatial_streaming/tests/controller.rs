@@ -1,4 +1,4 @@
-use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, WorldId};
+use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, WorldId, WorldPosition};
 use runen_spatial_demand::{
     ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
 };
@@ -9,11 +9,7 @@ use runen_spatial_streaming::{
 };
 
 fn partition() -> GridPartitionConfig {
-    GridPartitionConfig {
-        chunk_edge_meters: 16.0,
-        region_chunk_dims: [8, 8, 8],
-        fixed_point_scale: 1024,
-    }
+    GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap()
 }
 
 fn chunking_config(load_radius_chunks: i32, unload_radius_chunks: i32) -> ChunkStreamingConfig {
@@ -36,8 +32,10 @@ fn controller(load_budget: usize, unload_budget: usize) -> WorldStreamingControl
     WorldStreamingController::new(config)
 }
 
-fn focus(x: f32, y: f32, z: f32) -> StreamingTick {
-    StreamingTick::from_focus(StreamingFocus::new([x, y, z]))
+fn focus(x: f64, y: f64, z: f64) -> StreamingTick {
+    StreamingTick::from_focus(StreamingFocus::new(
+        WorldPosition::try_new(WorldId(7), [x, y, z]).unwrap(),
+    ))
 }
 
 fn provider_event(request: &StreamRequest, kind: ProviderEventKind) -> ProviderEvent {
@@ -69,7 +67,7 @@ fn single_chunk_controller() -> WorldStreamingController {
 fn tick_emits_budgeted_load_requests_without_loading_payloads() {
     let mut controller = controller(2, 4);
 
-    let output = controller.tick(focus(0.0, 0.0, 0.0));
+    let output = controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
 
     assert_eq!(output.requests.len(), 2);
     assert!(
@@ -93,7 +91,7 @@ fn tick_emits_budgeted_load_requests_without_loading_payloads() {
 #[test]
 fn provider_started_and_completed_advance_to_resident() {
     let mut controller = controller(1, 4);
-    let output = controller.tick(focus(0.0, 0.0, 0.0));
+    let output = controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     let request = output.requests[0];
 
     let started = controller
@@ -137,12 +135,12 @@ fn resident_chunk_exiting_desired_set_queues_unload_then_unloads() {
     };
     let mut controller = WorldStreamingController::new(config);
 
-    let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&load, ProviderEventKind::Completed))
         .unwrap();
 
-    let unload_tick = controller.tick(focus(16.0, 0.0, 0.0));
+    let unload_tick = controller.tick(focus(16.0, 0.0, 0.0)).unwrap();
     let unload = unload_tick
         .requests
         .iter()
@@ -171,7 +169,7 @@ fn resident_chunk_exiting_desired_set_queues_unload_then_unloads() {
 #[test]
 fn provider_failure_does_not_auto_retry_when_still_desired() {
     let mut controller = single_chunk_controller();
-    let first = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let first = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
 
     let events = controller
         .accept_provider_event(provider_event(&first, ProviderEventKind::Failed))
@@ -182,14 +180,14 @@ fn provider_failure_does_not_auto_retry_when_still_desired() {
         Some(ChunkLifecycleState::Failed)
     );
 
-    let retry = controller.tick(focus(0.0, 0.0, 0.0));
+    let retry = controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     assert!(retry.requests.is_empty());
 }
 
 #[test]
 fn explicit_retry_failed_chunk_queues_load_when_still_desired() {
     let mut controller = controller(1, 4);
-    let first = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let first = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
 
     controller
         .accept_provider_event(provider_event(&first, ProviderEventKind::Failed))
@@ -199,7 +197,7 @@ fn explicit_retry_failed_chunk_queues_load_when_still_desired() {
     assert_eq!(event.kind, WorldStreamingEventKind::LoadQueued);
     assert_eq!(event.request_id, None);
 
-    let retry = controller.tick(focus(0.0, 0.0, 0.0));
+    let retry = controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     assert_eq!(retry.requests.len(), 1);
     assert_eq!(retry.requests[0].chunk_id, first.chunk_id);
     assert_eq!(retry.requests[0].kind, StreamRequestKind::Load);
@@ -209,7 +207,7 @@ fn explicit_retry_failed_chunk_queues_load_when_still_desired() {
 #[test]
 fn resident_chunk_can_fail_without_payload_ownership() {
     let mut controller = controller(1, 4);
-    let request = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let request = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&request, ProviderEventKind::Completed))
         .unwrap();
@@ -229,9 +227,9 @@ fn resident_chunk_can_fail_without_payload_ownership() {
 #[test]
 fn load_request_becoming_undesired_before_provider_starts_queues_unload_after_completion() {
     let mut controller = single_chunk_controller();
-    let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
 
-    controller.tick(focus(16.0, 0.0, 0.0));
+    controller.tick(focus(16.0, 0.0, 0.0)).unwrap();
     let record = controller.record(load.chunk_id).unwrap();
     assert_eq!(record.state, ChunkLifecycleState::LoadRequested);
     assert!(!record.desired);
@@ -261,12 +259,12 @@ fn load_request_becoming_undesired_before_provider_starts_queues_unload_after_co
 #[test]
 fn load_request_becoming_undesired_while_loading_queues_unload_after_completion() {
     let mut controller = single_chunk_controller();
-    let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&load, ProviderEventKind::Started))
         .unwrap();
 
-    controller.tick(focus(16.0, 0.0, 0.0));
+    controller.tick(focus(16.0, 0.0, 0.0)).unwrap();
     let record = controller.record(load.chunk_id).unwrap();
     assert_eq!(record.state, ChunkLifecycleState::Loading);
     assert!(!record.desired);
@@ -292,7 +290,7 @@ fn load_request_becoming_undesired_while_loading_queues_unload_after_completion(
 #[test]
 fn unload_request_becoming_desired_before_provider_starts_queues_load_after_unload_completion() {
     let mut controller = single_chunk_controller();
-    let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&load, ProviderEventKind::Completed))
         .unwrap();
@@ -303,11 +301,12 @@ fn unload_request_becoming_desired_before_provider_starts_queues_load_after_unlo
 
     let unload = controller
         .tick(focus(16.0, 0.0, 0.0))
+        .unwrap()
         .requests
         .into_iter()
         .find(|request| request.chunk_id == load.chunk_id)
         .unwrap();
-    controller.tick(focus(0.0, 0.0, 0.0));
+    controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     let record = controller.record(load.chunk_id).unwrap();
     assert_eq!(record.state, ChunkLifecycleState::UnloadRequested);
     assert!(record.desired);
@@ -337,7 +336,7 @@ fn unload_request_becoming_desired_before_provider_starts_queues_load_after_unlo
 #[test]
 fn unload_request_becoming_desired_while_unloading_queues_load_after_unload_completion() {
     let mut controller = single_chunk_controller();
-    let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&load, ProviderEventKind::Completed))
         .unwrap();
@@ -348,6 +347,7 @@ fn unload_request_becoming_desired_while_unloading_queues_load_after_unload_comp
 
     let unload = controller
         .tick(focus(16.0, 0.0, 0.0))
+        .unwrap()
         .requests
         .into_iter()
         .find(|request| request.chunk_id == load.chunk_id)
@@ -355,7 +355,7 @@ fn unload_request_becoming_desired_while_unloading_queues_load_after_unload_comp
     controller
         .accept_provider_event(provider_event(&unload, ProviderEventKind::Started))
         .unwrap();
-    controller.tick(focus(0.0, 0.0, 0.0));
+    controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     let record = controller.record(load.chunk_id).unwrap();
     assert_eq!(record.state, ChunkLifecycleState::Unloading);
     assert!(record.desired);
@@ -382,8 +382,8 @@ fn unload_request_becoming_desired_while_unloading_queues_load_after_unload_comp
 fn lifecycle_event_order_is_deterministic_for_identical_reversal_completion() {
     fn run() -> Vec<WorldStreamingEvent> {
         let mut controller = single_chunk_controller();
-        let load = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
-        controller.tick(focus(16.0, 0.0, 0.0));
+        let load = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
+        controller.tick(focus(16.0, 0.0, 0.0)).unwrap();
         controller
             .accept_provider_event(provider_event(&load, ProviderEventKind::Completed))
             .unwrap()
@@ -399,12 +399,14 @@ fn request_order_is_deterministic_for_same_focus() {
 
     let first_ids = first
         .tick(focus(0.0, 0.0, 0.0))
+        .unwrap()
         .requests
         .into_iter()
         .map(|request| request.chunk_id)
         .collect::<Vec<_>>();
     let second_ids = second
         .tick(focus(0.0, 0.0, 0.0))
+        .unwrap()
         .requests
         .into_iter()
         .map(|request| request.chunk_id)
@@ -416,7 +418,7 @@ fn request_order_is_deterministic_for_same_focus() {
 #[test]
 fn stale_provider_event_after_completion_is_rejected() {
     let mut controller = controller(1, 4);
-    let request = controller.tick(focus(0.0, 0.0, 0.0)).requests[0];
+    let request = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests[0];
     controller
         .accept_provider_event(provider_event(&request, ProviderEventKind::Completed))
         .unwrap();
@@ -430,5 +432,32 @@ fn stale_provider_event_after_completion_is_rejected() {
         WorldStreamingError::UnknownRequest {
             request_id: request.request_id
         }
+    );
+}
+
+#[test]
+fn full_range_distance_failure_leaves_controller_state_unchanged() {
+    let mut controller = single_chunk_controller();
+    let old = -(2_f64.powi(62) * 16.0);
+    let new = 2_f64.powi(62) * 16.0;
+    controller.tick(focus(old, old, old)).unwrap();
+    let records_before = controller.records().copied().collect::<Vec<_>>();
+    let pending_before = controller.pending_requests().copied().collect::<Vec<_>>();
+
+    let error = controller.tick(focus(new, new, new)).unwrap_err();
+
+    assert!(matches!(
+        error,
+        WorldStreamingError::SpatialMath(runen_spatial::SpatialMathError::ArithmeticOverflow {
+            operation: "chunk distance square" | "chunk distance sum"
+        })
+    ));
+    assert_eq!(
+        controller.records().copied().collect::<Vec<_>>(),
+        records_before
+    );
+    assert_eq!(
+        controller.pending_requests().copied().collect::<Vec<_>>(),
+        pending_before
     );
 }

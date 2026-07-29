@@ -37,15 +37,15 @@ No universal residency manager spans these layers.
 
 ## Current implementation
 
-The current implementation retains the inherited behavioral baseline while
-package identities are normalized:
+The current implementation retains the accepted single-focus and lifecycle
+baseline while applying checked spatial contracts:
 
-- stable chunk and region coordinates use signed `i32` components;
+- stable chunk, region, and clipmap coordinates use signed `i64` components;
 - demand is single-focus;
 - streaming uses one combined lifecycle state;
 - request-ID allocation saturates.
 
-These are current implementation facts, not the accepted end-state contract.
+RS4 and RS5 remain future work.
 
 ## Deferred decisions
 

@@ -128,3 +128,8 @@ pub struct WorldStreamingEvent {
 
 Events must be deterministic and ordered by stable request priority, chunk id,
 and request id.
+
+`WorldStreamingController::tick` is fallible for checked spatial math. A focus
+must use the controller's `WorldId`; a spatial failure is reported before the
+controller changes lifecycle records or queues. Broader lifecycle hardening,
+including checked request IDs, remains RS5 work.

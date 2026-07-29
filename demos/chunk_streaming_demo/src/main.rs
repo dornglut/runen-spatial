@@ -1,4 +1,4 @@
-use runen_spatial::{GridPartitionConfig, WorldId};
+use runen_spatial::{GridPartitionConfig, WorldId, WorldPosition};
 use runen_spatial_demand::{
     ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
 };
@@ -10,9 +10,11 @@ use runen_spatial_streaming::{
 fn main() {
     let mut controller = WorldStreamingController::new(streaming_config());
 
-    let tick = controller.tick(StreamingTick::from_focus(StreamingFocus::new([
-        0.0, 0.0, 0.0,
-    ])));
+    let position =
+        WorldPosition::try_new(WorldId(0), [0.0, 0.0, 0.0]).expect("demo position is valid");
+    let tick = controller
+        .tick(StreamingTick::from_focus(StreamingFocus::new(position)))
+        .expect("demo tick is valid");
 
     println!("Stream requests:");
     for request in &tick.requests {
@@ -54,11 +56,7 @@ fn main() {
 fn streaming_config() -> WorldStreamingConfig {
     let mut config = WorldStreamingConfig::new(
         WorldId(0),
-        GridPartitionConfig {
-            chunk_edge_meters: 32.0,
-            region_chunk_dims: [8, 8, 8],
-            fixed_point_scale: 1024,
-        },
+        GridPartitionConfig::try_new(32.0, [8, 8, 8]).expect("demo partition is valid"),
         ChunkStreamingConfig {
             load_radius_chunks: 0,
             unload_radius_chunks: 1,

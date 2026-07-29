@@ -1,14 +1,22 @@
-use runen_spatial::{ChunkCoord3, GridPartitionConfig};
+use runen_spatial::{ChunkCoord3, GridPartitionConfig, SpatialMathError, WorldId, WorldPosition};
+
 use runen_spatial_demand::{
     ChunkLoadOrder, ChunkStreamer, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
 };
 
 fn default_partition() -> GridPartitionConfig {
-    GridPartitionConfig {
-        chunk_edge_meters: 16.0,
-        region_chunk_dims: [8, 8, 8],
-        fixed_point_scale: 1024,
-    }
+    GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap()
+}
+
+fn focus(meters: [f64; 3]) -> StreamingFocus {
+    StreamingFocus::new(WorldPosition::try_new(WorldId(7), meters).unwrap())
+}
+
+fn squared_distance_from_origin(chunk: ChunkCoord3) -> i128 {
+    let x = i128::from(chunk.x);
+    let y = i128::from(chunk.y);
+    let z = i128::from(chunk.z);
+    x * x + y * y + z * z
 }
 
 #[test]
@@ -25,7 +33,7 @@ fn first_update_populates_active_set() {
 
     let mut streamer = ChunkStreamer::new(partition, config);
 
-    let diff = streamer.update_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let diff = streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
 
     assert_eq!(diff.exited.len(), 0);
     assert_eq!(diff.entered.len(), 9);
@@ -37,7 +45,9 @@ fn center_chunk_matches_partition_flooring() {
     let partition = default_partition();
     let streamer = ChunkStreamer::new(partition, ChunkStreamingConfig::default());
 
-    let center = streamer.center_chunk_for_focus(StreamingFocus::new([15.9, 0.0, -0.1]));
+    let center = streamer
+        .center_chunk_for_focus(focus([15.9, 0.0, -0.1]))
+        .unwrap();
 
     assert_eq!(center, ChunkCoord3 { x: 0, y: 0, z: -1 });
 }
@@ -56,11 +66,11 @@ fn moving_focus_enters_and_exits_chunks() {
 
     let mut streamer = ChunkStreamer::new(partition, config);
 
-    let first = streamer.update_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let first = streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
     assert_eq!(first.entered, vec![ChunkCoord3 { x: 0, y: 0, z: 0 }]);
     assert!(first.exited.is_empty());
 
-    let second = streamer.update_focus(StreamingFocus::new([16.0, 0.0, 0.0]));
+    let second = streamer.update_focus(focus([16.0, 0.0, 0.0])).unwrap();
     assert_eq!(second.entered, vec![ChunkCoord3 { x: 1, y: 0, z: 0 }]);
     assert_eq!(second.exited, vec![ChunkCoord3 { x: 0, y: 0, z: 0 }]);
 }
@@ -79,8 +89,8 @@ fn unload_hysteresis_retains_chunks_inside_unload_radius() {
 
     let mut streamer = ChunkStreamer::new(partition, config);
 
-    streamer.update_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
-    let diff = streamer.update_focus(StreamingFocus::new([16.0, 0.0, 0.0]));
+    streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
+    let diff = streamer.update_focus(focus([16.0, 0.0, 0.0])).unwrap();
 
     assert_eq!(diff.entered, vec![ChunkCoord3 { x: 1, y: 0, z: 0 }]);
     assert!(diff.exited.is_empty());
@@ -109,7 +119,9 @@ fn planar_xz_uses_horizontal_footprint_with_vertical_band() {
     };
 
     let streamer = ChunkStreamer::new(partition, config);
-    let desired = streamer.desired_chunks_for_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let desired = streamer
+        .desired_chunks_for_focus(focus([0.0, 0.0, 0.0]))
+        .unwrap();
 
     // (2*1+1) * (2*1+1) * (2*1+1) = 27
     assert_eq!(desired.len(), 27);
@@ -128,7 +140,9 @@ fn volume3d_uses_full_xyz_volume() {
     };
 
     let streamer = ChunkStreamer::new(partition, config);
-    let desired = streamer.desired_chunks_for_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let desired = streamer
+        .desired_chunks_for_focus(focus([0.0, 0.0, 0.0]))
+        .unwrap();
 
     // x: 3, y: 5, z: 3 => 45
     assert_eq!(desired.len(), 45);
@@ -147,12 +161,20 @@ fn nearest_first_orders_by_distance() {
     };
 
     let mut streamer = ChunkStreamer::new(partition, config);
-    let diff = streamer.update_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let diff = streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
 
     assert_eq!(
         diff.entered.first().copied(),
         Some(ChunkCoord3 { x: 0, y: 0, z: 0 })
     );
+    for adjacent in diff.entered.windows(2) {
+        let left_distance = squared_distance_from_origin(adjacent[0]);
+        let right_distance = squared_distance_from_origin(adjacent[1]);
+        assert!(left_distance <= right_distance);
+        if left_distance == right_distance {
+            assert!(adjacent[0] <= adjacent[1]);
+        }
+    }
 }
 
 #[test]
@@ -168,7 +190,7 @@ fn farthest_first_reverses_priority() {
     };
 
     let mut streamer = ChunkStreamer::new(partition, config);
-    let diff = streamer.update_focus(StreamingFocus::new([0.0, 0.0, 0.0]));
+    let diff = streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
 
     assert_ne!(
         diff.entered.first().copied(),
@@ -178,6 +200,14 @@ fn farthest_first_reverses_priority() {
         diff.entered.last().copied(),
         Some(ChunkCoord3 { x: 0, y: 0, z: 0 })
     );
+    for adjacent in diff.entered.windows(2) {
+        let left_distance = squared_distance_from_origin(adjacent[0]);
+        let right_distance = squared_distance_from_origin(adjacent[1]);
+        assert!(left_distance >= right_distance);
+        if left_distance == right_distance {
+            assert!(adjacent[0] >= adjacent[1]);
+        }
+    }
 }
 
 #[test]
@@ -199,4 +229,56 @@ fn config_is_clamped_on_creation() {
     assert_eq!(effective.unload_radius_chunks, 0);
     assert_eq!(effective.vertical_load_radius_chunks, 0);
     assert_eq!(effective.vertical_unload_radius_chunks, 0);
+}
+
+#[test]
+fn full_range_distance_failure_is_atomic() {
+    let mut streamer = ChunkStreamer::new(
+        default_partition(),
+        ChunkStreamingConfig {
+            load_radius_chunks: 0,
+            unload_radius_chunks: 0,
+            vertical_load_radius_chunks: 0,
+            vertical_unload_radius_chunks: 0,
+            mode: ChunkStreamingMode::PlanarXZ,
+            load_order: ChunkLoadOrder::NearestFirst,
+        },
+    );
+    let old = -(2_f64.powi(62) * 16.0);
+    let new = 2_f64.powi(62) * 16.0;
+    streamer.update_focus(focus([old, old, old])).unwrap();
+    let active_before = streamer.active_chunks().clone();
+
+    let error = streamer.update_focus(focus([new, new, new])).unwrap_err();
+
+    assert!(matches!(
+        error,
+        SpatialMathError::ArithmeticOverflow {
+            operation: "chunk distance square" | "chunk distance sum"
+        }
+    ));
+    assert_eq!(streamer.active_chunks(), &active_before);
+}
+
+#[test]
+fn failed_focus_preparation_leaves_active_set_unchanged() {
+    let mut streamer = ChunkStreamer::new(default_partition(), ChunkStreamingConfig::default());
+    streamer.update_focus(focus([0.0, 0.0, 0.0])).unwrap();
+    let active_before = streamer.active_chunks().clone();
+
+    let error = streamer
+        .update_focus_with(focus([16.0, 0.0, 0.0]), |_, _| {
+            Err::<(), _>(SpatialMathError::ArithmeticOverflow {
+                operation: "test focus preparation",
+            })
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        SpatialMathError::ArithmeticOverflow {
+            operation: "test focus preparation",
+        }
+    );
+    assert_eq!(streamer.active_chunks(), &active_before);
 }
