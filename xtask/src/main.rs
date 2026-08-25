@@ -114,8 +114,8 @@ fn validate_required_files(root: &Path) -> Result<(), String> {
         "ARCHITECTURE.md",
         "Cargo.lock",
         "Cargo.toml",
-        "LICENSE-APACHE",
-        "LICENSE-MIT",
+        "LICENSE",
+        "LICENSING.md",
         "README.md",
         "SECURITY.md",
         "TESTING.md",
@@ -131,6 +131,14 @@ fn validate_required_files(root: &Path) -> Result<(), String> {
 
     for relative in REQUIRED {
         require_file(root, relative)?;
+    }
+
+    for forbidden in ["LICENSE-MIT", "LICENSE-APACHE"] {
+        if root.join(forbidden).exists() {
+            return Err(format!(
+                "stale current license file must be removed: {forbidden}"
+            ));
+        }
     }
 
     for forbidden in [
@@ -179,6 +187,7 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     for required in [
         "\"xtask\"",
         "rust-version = \"1.93.0\"",
+        "license = \"GPL-3.0-only\"",
         "repository = \"https://github.com/dornglut/runen-spatial\"",
         "publish = false",
         "unsafe_code = \"forbid\"",
@@ -199,6 +208,7 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         let manifest = read_text(root, relative)?;
         for required in [
             "rust-version.workspace = true",
+            "license.workspace = true",
             "repository.workspace = true",
             "publish.workspace = true",
             "[lints]\nworkspace = true",
@@ -210,6 +220,7 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     let adapter_path = "adapters/godot_world_streaming/Cargo.toml";
     let adapter = read_text(root, adapter_path)?;
     for required in [
+        "license.workspace = true",
         "repository.workspace = true",
         "publish.workspace = true",
         "[lints.rust]\nunsafe_code = \"allow\"",
@@ -224,6 +235,7 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     }
 
     let xtask = read_text(root, "xtask/Cargo.toml")?;
+    require_contains("xtask/Cargo.toml", &xtask, "license.workspace = true")?;
     require_contains("xtask/Cargo.toml", &xtask, "publish = false")?;
     require_contains("xtask/Cargo.toml", &xtask, "[lints]\nworkspace = true")
 }
@@ -420,8 +432,8 @@ fn is_authored_text(path: &Path) -> bool {
                 | "ARCHITECTURE.md"
                 | "TESTING.md"
                 | "SECURITY.md"
-                | "LICENSE-MIT"
-                | "LICENSE-APACHE"
+                | "LICENSE"
+                | "LICENSING.md"
         )
     ) {
         return true;
