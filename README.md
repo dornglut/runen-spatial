@@ -57,6 +57,18 @@ RunenSpatial is not yet a production-complete infinite-world or multi-consumer s
 
 Issues own accepted live work; begin at the [parent outcome issue](https://github.com/dornglut/runen-spatial/issues/1) and follow its current child. Pull requests and exact-head CI own implementation evidence. Durable documents do not track active branch, PR, SHA, or workflow inventories.
 
+## Licensing
+
+The current revision is licensed under the GNU General Public License version 3 only (`GPL-3.0-only`). See [LICENSE](LICENSE).
+
+A separate commercial license may be available from copyright holder(s) with sufficient rights to grant it. Historical licensing, third-party material, and commercial-licensing boundaries are described in [LICENSING.md](LICENSING.md).
+
+## Contributions
+
+Issue reports, design discussion, reviews, and reproducible cases that do not add third-party repository content are welcome under the repository's normal governance.
+
+Until reviewed inbound contribution terms preserve the rights needed for separate commercial licensing, external pull requests that add tracked repository content are not accepted.
+
 ## Validation
 
 Run the complete maintained validation surface:
