@@ -17,13 +17,11 @@ pub struct ProviderEvent {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum WorldStreamingEventKind {
-    LoadQueued,
     LoadRequested,
     ProviderStarted,
     ProviderCompleted,
     ProviderFailed,
     Resident,
-    UnloadQueued,
     UnloadRequested,
     Unloaded,
 }

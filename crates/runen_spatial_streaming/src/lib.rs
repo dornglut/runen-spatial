@@ -5,8 +5,8 @@ mod lifecycle;
 mod request;
 
 pub use controller::{
-    ChunkRuntimeRecord, StreamingBudgets, StreamingTick, StreamingTickOutput, WorldStreamingConfig,
-    WorldStreamingController,
+    ChunkRuntimeRecord, StreamingBudgets, StreamingCapacity, StreamingPressureDiagnostics,
+    StreamingTick, StreamingTickOutput, WorldStreamingConfig, WorldStreamingController,
 };
 pub use error::WorldStreamingError;
 pub use events::{ProviderEvent, ProviderEventKind, WorldStreamingEvent, WorldStreamingEventKind};
