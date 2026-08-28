@@ -22,28 +22,103 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
           rustup toolchain install 1.93.0 --profile minimal --component rustfmt,clippy
-      - name: Complete issue 29 candidate
+      - name: Complete and validate issue 29 candidate
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"{label} target missing")
+              return text.replace(old, new, 1)
+
           controller = Path("crates/runen_spatial_streaming/src/controller.rs")
           text = controller.read_text()
-          old = 'candidates.sort_by_key(|(rank, chunk_id)| (*rank, *chunk_id));\n        candidates.truncate(limit);'
-          new = 'candidates.sort_by_key(|(chunk_id, rank)| (*rank, *chunk_id));\n        candidates.truncate(limit);'
-          if old not in text:
-              raise SystemExit("unload ordering patch target missing")
-          controller.write_text(text.replace(old, new, 1))
+          text = replace_once(
+              text,
+              'candidates.sort_by_key(|(rank, chunk_id)| (*rank, *chunk_id));\n        candidates.truncate(limit);',
+              'candidates.sort_by_key(|(chunk_id, rank)| (*rank, *chunk_id));\n        candidates.truncate(limit);',
+              'unload ordering',
+          )
+          start = text.index('    pub fn retry_blocking_failure(')
+          end = text.index('    fn apply_demand_delta(', start)
+          retry = '''    pub fn retry_blocking_failure(&mut self, chunk_id: ChunkId) -> Result<(), WorldStreamingError> {
+              let remove_record = {
+                  let Some(record) = self.records.get_mut(&chunk_id) else {
+                      return Err(WorldStreamingError::UnknownChunk { chunk_id });
+                  };
+
+                  match (
+                      record.desired,
+                      record.availability,
+                      record.operation,
+                      record.blocking_failure,
+                  ) {
+                      (
+                          true,
+                          ChunkAvailability::Absent,
+                          ChunkOperation::Idle,
+                          Some(StreamRequestKind::Load),
+                      ) => true,
+                      (
+                          false,
+                          ChunkAvailability::Resident,
+                          ChunkOperation::Idle,
+                          Some(StreamRequestKind::Unload),
+                      ) => {
+                          record.blocking_failure = None;
+                          false
+                      }
+                      _ => {
+                          return Err(WorldStreamingError::InvalidBlockingFailureRetry {
+                              chunk_id,
+                              desired: record.desired,
+                              availability: record.availability,
+                              operation: record.operation,
+                              blocking_failure: record.blocking_failure,
+                          });
+                      }
+                  }
+              };
+
+              if remove_record {
+                  let removed = self.records.remove(&chunk_id);
+                  debug_assert!(removed.is_some());
+              }
+              Ok(())
+          }
+
+          '''
+          text = text[:start] + retry + text[end:]
+          controller.write_text(text)
+
+          tests = Path("crates/runen_spatial_streaming/tests/controller.rs")
+          text = tests.read_text()
+          text = replace_once(
+              text,
+              '    controller.retry_blocking_failure(request.chunk_id).unwrap();\n    let retry = controller',
+              '    controller.retry_blocking_failure(request.chunk_id).unwrap();\n    assert!(controller.record(request.chunk_id).is_none());\n    let retry = controller',
+              'load retry pruning proof',
+          )
+          text = replace_once(
+              text,
+              '    controller.retry_blocking_failure(load.chunk_id).unwrap();\n    let retry = controller',
+              '    controller.retry_blocking_failure(load.chunk_id).unwrap();\n    assert_eq!(\n        controller.record(load.chunk_id).unwrap().blocking_failure(),\n        None\n    );\n    let retry = controller',
+              'unload retry retention proof',
+          )
+          tests.write_text(text)
 
           adapter = Path("adapters/godot_world_streaming/src/world_streaming_node.rs")
           text = adapter.read_text()
-          old = '''use runen_spatial_streaming::{
+          text = replace_once(
+              text,
+              '''use runen_spatial_streaming::{
               ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
               StreamRequestKind, StreamingBudgets, StreamingTick, WorldStreamingConfig,
               WorldStreamingController, WorldStreamingEvent, WorldStreamingEventKind,
           };
-          '''
-          new = '''use runen_spatial_streaming::{
+          ''',
+              '''use runen_spatial_streaming::{
               ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
               StreamRequestKind, StreamingBudgets, StreamingCapacity, StreamingTick,
               WorldStreamingConfig, WorldStreamingController, WorldStreamingEvent,
@@ -53,22 +128,11 @@ jobs:
           const DEFAULT_MAX_TRACKED_RECORDS: usize = 1024;
           const DEFAULT_MAX_IN_FLIGHT_LOADS: usize = 4;
           const DEFAULT_MAX_IN_FLIGHT_UNLOADS: usize = 4;
-          '''
-          if old not in text:
-              raise SystemExit("adapter import patch target missing")
-          text = text.replace(old, new, 1)
-
-          old = '''        dict.set(
-              "max_unload_requests_per_tick",
-              self.max_unload_requests_per_tick as i64,
-          );
-              dict
-          '''
-          new = '''        dict.set(
-              "max_unload_requests_per_tick",
-              self.max_unload_requests_per_tick as i64,
-          );
-              let capacity = adapter_streaming_capacity();
+          ''',
+              'adapter imports',
+          )
+          marker = '        dict\n    }\n\n    fn accept_provider_event_from_godot('
+          insertion = '''        let capacity = adapter_streaming_capacity();
               dict.set("max_tracked_records", capacity.max_tracked_records() as i64);
               dict.set(
                   "max_in_flight_loads",
@@ -79,41 +143,42 @@ jobs:
                   capacity.max_in_flight_unloads() as i64,
               );
               dict
-          '''
-          if old not in text:
-              raise SystemExit("describe_config patch target missing")
-          text = text.replace(old, new, 1)
+          }
 
-          old = '''            WorldStreamingEventKind::LoadQueued
+              fn accept_provider_event_from_godot('''
+          text = replace_once(text, marker, insertion, 'describe config')
+          text = replace_once(
+              text,
+              '''            WorldStreamingEventKind::LoadQueued
               | WorldStreamingEventKind::LoadRequested
               | WorldStreamingEventKind::UnloadQueued
               | WorldStreamingEventKind::UnloadRequested => {}
-          '''
-          new = '''            WorldStreamingEventKind::LoadRequested
+          ''',
+              '''            WorldStreamingEventKind::LoadRequested
               | WorldStreamingEventKind::UnloadRequested => {}
-          '''
-          if old not in text:
-              raise SystemExit("adapter event patch target missing")
-          text = text.replace(old, new, 1)
-
-          old = '''        let mut config =
+          ''',
+              'adapter queue events',
+          )
+          text = replace_once(
+              text,
+              '''        let mut config =
               WorldStreamingConfig::new(WorldId(self.world_id), partition, DemandLimits::default());
               config.budgets = self.streaming_budgets();
-          '''
-          new = '''        let mut config = WorldStreamingConfig::new(
+          ''',
+              '''        let mut config = WorldStreamingConfig::new(
                   WorldId(self.world_id),
                   partition,
                   DemandLimits::default(),
                   adapter_streaming_capacity(),
               );
               config.budgets = self.streaming_budgets();
-          '''
-          if old not in text:
-              raise SystemExit("adapter config patch target missing")
-          text = text.replace(old, new, 1)
-
-          marker = 'const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);\n'
-          addition = '''const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
+          ''',
+              'adapter config',
+          )
+          text = replace_once(
+              text,
+              'const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);\n',
+              '''const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
 
           fn adapter_streaming_capacity() -> StreamingCapacity {
               StreamingCapacity::new(
@@ -122,25 +187,25 @@ jobs:
                   DEFAULT_MAX_IN_FLIGHT_UNLOADS,
               )
           }
-          '''
-          if marker not in text:
-              raise SystemExit("adapter capacity helper target missing")
-          text = text.replace(marker, addition, 1)
-
-          old = '''        NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
+          ''',
+              'adapter capacity helper',
+          )
+          text = replace_once(
+              text,
+              '''        NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
               request_id_to_i64, requested_radii, requested_region_dims,
-          '''
-          new = '''        NODE_FOCUS_SOURCE, adapter_streaming_capacity, demand_changes_from_node_values,
+          ''',
+              '''        NODE_FOCUS_SOURCE, adapter_streaming_capacity, demand_changes_from_node_values,
               partition_from_node_values, request_id_to_i64, requested_radii, requested_region_dims,
-          '''
-          if old not in text:
-              raise SystemExit("adapter test import target missing")
-          text = text.replace(old, new, 1)
-
-          insert_before = '''    #[test]
+          ''',
+              'adapter test imports',
+          )
+          text = replace_once(
+              text,
+              '''    #[test]
               fn request_id_translation_is_exact_and_fallible() {
-          '''
-          test = '''    #[test]
+          ''',
+              '''    #[test]
               fn adapter_capacity_policy_is_explicit_and_bounded() {
                   let capacity = adapter_streaming_capacity();
                   assert_eq!(capacity.max_tracked_records(), 1024);
@@ -150,10 +215,9 @@ jobs:
 
               #[test]
               fn request_id_translation_is_exact_and_fallible() {
-          '''
-          if insert_before not in text:
-              raise SystemExit("adapter capacity test target missing")
-          text = text.replace(insert_before, test, 1)
+          ''',
+              'adapter capacity test',
+          )
           adapter.write_text(text)
 
           Path("README.md").write_text('''# RunenSpatial
