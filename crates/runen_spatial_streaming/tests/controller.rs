@@ -94,7 +94,7 @@ fn event_kinds(events: &[WorldStreamingEvent]) -> Vec<WorldStreamingEventKind> {
     events.iter().map(|event| event.kind).collect()
 }
 
-fn event_request_ids(events: &[WorldStreamingEvent]) -> Vec<Option<StreamRequestId>> {
+fn event_request_ids(events: &[WorldStreamingEvent]) -> Vec<StreamRequestId> {
     events.iter().map(|event| event.request_id).collect()
 }
 
@@ -142,6 +142,10 @@ fn load_request_keeps_availability_absent_until_completion() {
             WorldStreamingEventKind::Resident,
         ]
     );
+    assert_eq!(
+        event_request_ids(&events),
+        vec![request.request_id, request.request_id]
+    );
     let record = controller.record(request.chunk_id).unwrap();
     assert_eq!(record.availability(), ChunkAvailability::Resident);
     assert_eq!(record.operation(), ChunkOperation::Idle);
@@ -185,7 +189,7 @@ fn load_failure_is_blocking_only_while_load_is_still_required() {
     let events = controller
         .accept_provider_event(provider_event(&request, ProviderEventKind::Failed))
         .unwrap();
-    assert_eq!(event_request_ids(&events), vec![Some(request.request_id)]);
+    assert_eq!(event_request_ids(&events), vec![request.request_id]);
     let record = controller.record(request.chunk_id).unwrap();
     assert_eq!(record.availability(), ChunkAvailability::Absent);
     assert_eq!(record.operation(), ChunkOperation::Idle);
@@ -195,6 +199,7 @@ fn load_failure_is_blocking_only_while_load_is_still_required() {
     assert!(idle_tick.requests.is_empty());
 
     controller.retry_blocking_failure(request.chunk_id).unwrap();
+    assert!(controller.record(request.chunk_id).is_none());
     let retry = controller
         .tick(StreamingTick::without_demand_changes())
         .unwrap();
@@ -230,6 +235,9 @@ fn unload_failure_preserves_residency_and_supports_explicit_retry() {
     assert_eq!(record.blocking_failure(), Some(StreamRequestKind::Unload));
 
     controller.retry_blocking_failure(load.chunk_id).unwrap();
+    let retriable = controller.record(load.chunk_id).unwrap();
+    assert_eq!(retriable.availability(), ChunkAvailability::Resident);
+    assert_eq!(retriable.blocking_failure(), None);
     let retry = controller
         .tick(StreamingTick::without_demand_changes())
         .unwrap();
@@ -263,7 +271,7 @@ fn unload_failure_is_cleared_when_intent_reverses_to_resident() {
 }
 
 #[test]
-fn active_load_reversal_finishes_resident_then_becomes_unload_eligible() {
+fn active_load_reversal_finishes_resident_then_becomes_pending_unload() {
     let mut controller = single_chunk_controller();
     let load = load_single_chunk(&mut controller);
     controller
@@ -379,11 +387,12 @@ fn unissued_demand_requires_no_runtime_record_and_reverses_without_churn() {
     let mut controller = controller(0, 0);
     let first = controller.tick(single_focus(0.0, 0.0, 0.0)).unwrap();
     assert!(first.requests.is_empty());
-    assert_eq!(first.pressure.unadmitted_desired_chunks(), 1);
+    assert_eq!(first.pressure.deferred_loads(), 1);
     assert_eq!(controller.records().count(), 0);
 
     let reversed = controller.tick(single_focus(16.0, 0.0, 0.0)).unwrap();
     assert!(reversed.requests.is_empty());
+    assert_eq!(reversed.pressure.deferred_loads(), 1);
     assert_eq!(controller.records().count(), 0);
     assert!(controller.pending_requests().next().is_none());
 }
@@ -602,13 +611,18 @@ fn tracked_record_capacity_defers_new_loads_without_losing_demand() {
     assert_eq!(moved.requests[0].chunk_id, first_load.chunk_id);
     assert_eq!(moved.pressure.tracked_records(), 1);
     assert_eq!(moved.pressure.max_tracked_records(), 1);
-    assert_eq!(moved.pressure.unadmitted_desired_chunks(), 1);
-    assert_eq!(moved.pressure.remaining_eligible_loads(), 1);
+    assert_eq!(moved.pressure.deferred_loads(), 1);
 
-    let stalled = controller.tick(single_focus(32.0, 0.0, 0.0)).unwrap();
-    assert!(stalled.requests.is_empty());
-    assert_eq!(stalled.pressure.tracked_records(), 1);
-    assert_eq!(stalled.pressure.unadmitted_desired_chunks(), 1);
+    for step in 2..=12 {
+        let stalled = controller
+            .tick(single_focus(f64::from(step * 16), 0.0, 0.0))
+            .unwrap();
+        assert!(stalled.requests.is_empty());
+        assert_eq!(stalled.pressure.tracked_records(), 1);
+        assert_eq!(stalled.pressure.deferred_loads(), 1);
+        assert_eq!(controller.records().count(), 1);
+        assert_eq!(controller.pending_requests().count(), 1);
+    }
 
     let unload = moved.requests[0];
     controller
@@ -623,7 +637,7 @@ fn tracked_record_capacity_defers_new_loads_without_losing_demand() {
     assert_eq!(resumed.requests[0].kind, StreamRequestKind::Load);
     assert_eq!(
         resumed.requests[0].chunk_id,
-        ChunkId::new(WorldId(7), ChunkCoord3 { x: 2, y: 0, z: 0 })
+        ChunkId::new(WorldId(7), ChunkCoord3 { x: 12, y: 0, z: 0 })
     );
 }
 
@@ -636,7 +650,7 @@ fn in_flight_load_capacity_blocks_accumulation_across_ticks() {
     assert_eq!(first.requests.len(), 1);
     assert_eq!(first.pressure.in_flight_loads(), 1);
     assert_eq!(first.pressure.max_in_flight_loads(), 1);
-    assert!(first.pressure.remaining_eligible_loads() > 0);
+    assert!(first.pressure.deferred_loads() > 0);
 
     let second = controller
         .tick(StreamingTick::without_demand_changes())
@@ -692,13 +706,48 @@ fn in_flight_unload_capacity_blocks_accumulation() {
     );
     assert_eq!(moved.pressure.in_flight_unloads(), 1);
     assert_eq!(moved.pressure.max_in_flight_unloads(), 1);
-    assert_eq!(moved.pressure.remaining_eligible_unloads(), 1);
+    assert_eq!(moved.pressure.remaining_unloads(), 1);
 
     let stalled = controller
         .tick(StreamingTick::without_demand_changes())
         .unwrap();
     assert!(stalled.requests.is_empty());
     assert_eq!(stalled.pressure.in_flight_unloads(), 1);
+    assert_eq!(stalled.pressure.remaining_unloads(), 1);
+}
+
+#[test]
+fn unload_order_uses_rank_then_chunk_identity() {
+    let capacity = StreamingCapacity::new(3, 3, 3);
+    let mut controller = controller_with_capacity(3, 0, capacity);
+    let loads = controller.tick(focus(0.0, 0.0, 0.0)).unwrap().requests;
+    assert_eq!(loads.len(), 3);
+    for load in &loads {
+        controller
+            .accept_provider_event(provider_event(load, ProviderEventKind::Completed))
+            .unwrap();
+    }
+
+    controller.tick(single_focus(160.0, 0.0, 0.0)).unwrap();
+    let mut expected = controller
+        .records()
+        .map(|record| (record.rank(), record.chunk_id()))
+        .collect::<Vec<_>>();
+    expected.sort();
+
+    controller.set_budgets(StreamingBudgets {
+        max_load_requests_per_tick: 0,
+        max_unload_requests_per_tick: 3,
+    });
+    let output = controller
+        .tick(StreamingTick::without_demand_changes())
+        .unwrap();
+    let actual = output
+        .requests
+        .iter()
+        .map(|request| (request.rank, request.chunk_id))
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected);
 }
 
 #[test]
@@ -708,5 +757,19 @@ fn per_tick_budget_remains_independent_from_in_flight_capacity() {
     let output = controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     assert_eq!(output.requests.len(), 1);
     assert_eq!(output.pressure.in_flight_loads(), 1);
-    assert!(output.pressure.remaining_eligible_loads() > 0);
+    assert!(output.pressure.deferred_loads() > 0);
+}
+
+#[test]
+fn zero_capacity_is_explicit_and_does_not_materialize_waiting_loads() {
+    let capacity = StreamingCapacity::new(0, 0, 0);
+    let mut controller = controller_with_capacity(8, 8, capacity);
+    let output = controller.tick(single_focus(0.0, 0.0, 0.0)).unwrap();
+
+    assert!(output.requests.is_empty());
+    assert_eq!(output.pressure.tracked_records(), 0);
+    assert_eq!(output.pressure.max_tracked_records(), 0);
+    assert_eq!(output.pressure.deferred_loads(), 1);
+    assert_eq!(controller.records().count(), 0);
+    assert_eq!(controller.pending_requests().count(), 0);
 }
