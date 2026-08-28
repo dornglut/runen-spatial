@@ -7,14 +7,13 @@ pub struct WorldFrame {
 
 impl Default for WorldFrame {
     fn default() -> Self {
-        Self::try_new(WorldPosition::try_new(crate::WorldId(0), [0.0; 3]).expect("valid default"))
-            .expect("valid default")
+        Self::new(WorldPosition::try_new(crate::WorldId(0), [0.0; 3]).expect("valid default"))
     }
 }
 
 impl WorldFrame {
-    pub fn try_new(origin: WorldPosition) -> Result<Self, SpatialMathError> {
-        Ok(Self { origin })
+    pub fn new(origin: WorldPosition) -> Self {
+        Self { origin }
     }
 
     pub fn origin(self) -> WorldPosition {
