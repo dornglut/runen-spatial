@@ -1,4 +1,3 @@
-pub mod bounds;
 pub mod error;
 pub mod frames;
 pub mod ids;
@@ -9,7 +8,6 @@ pub mod grid;
 pub mod hash;
 pub mod ring;
 
-pub use bounds::{SpatialAabb3, SpatialPoint3};
 pub use error::SpatialMathError;
 pub use frames::WorldFrame;
 pub use hash::{

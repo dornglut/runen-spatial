@@ -12,15 +12,11 @@ It does not own world generation, SDF/product semantics, gameplay/simulation act
 
 ### `runen-spatial`
 
-Foundation package. Owns world-qualified identities, global/frame-local positions, grid partitioning, hierarchy math, clipmap/ring mapping, bounds, checked spatial arithmetic, and deterministic spatial-hash primitives.
+Foundation package. Owns world-qualified identities, global/frame-local positions, grid partitioning, hierarchy math, clipmap/ring mapping, checked spatial arithmetic, and deterministic spatial-hash primitives.
 
 It has no RunenSpatial runtime-package dependency.
 
-### `runen-spatial-index`
-
-Current provisional generic spatial-index package. It depends on `runen-spatial`.
-
-The package's existence is not a commitment to retain or publish it. Its mutation semantics, extreme-coordinate behavior, complexity bounds, and independent consumer value require a dedicated decision before it becomes a durable boundary.
+No generic spatial-index package is retained. The inherited provisional index had no maintained consumer and did not justify an independent package contract. A future index belongs with a proven consumer until reusable ownership and complexity requirements are established.
 
 ### `runen-spatial-demand`
 
@@ -52,7 +48,6 @@ Private repository tooling behind `cargo validate`. It is not part of the runtim
 
 ```text
 runen-spatial
-├── runen-spatial-index
 ├── runen-spatial-demand
 │   └── runen-spatial-streaming
 ├── chunk_streaming_demo      (consumer)

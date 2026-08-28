@@ -167,13 +167,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "runen-spatial-index"
-version = "0.1.0"
-dependencies = [
- "runen-spatial",
-]
-
-[[package]]
 name = "runen-spatial-streaming"
 version = "0.1.0"
 dependencies = [
