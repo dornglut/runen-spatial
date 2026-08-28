@@ -14,7 +14,9 @@ The consuming host owns scenes, providers, payload caches, generation, realizati
 
 The adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs through one stable internal demand source, emits framework requests/events through Godot-visible methods and signals, and can rebuild its controller from node configuration.
 
-Its current numeric conversion, request-ID representation, configuration-mutation, and controller-reset behavior remain pre-release integration contracts. They should be hardened only after the corresponding host-neutral demand and lifecycle contracts stabilize, avoiding duplicate semantic churn.
+Request IDs are translated exactly across the Godot boundary. Inbound IDs must be positive signed 64-bit values. A host-neutral request ID that cannot be represented exactly as Godot `i64` is reported through `streaming_error`; it is never saturated or aliased to another request.
+
+Other numeric conversion, configuration-mutation, and controller-reset behavior remains pre-release integration contract work. Harden those surfaces independently against the accepted host-neutral contracts rather than duplicating core semantics in the adapter.
 
 ## Maturity
 

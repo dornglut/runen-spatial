@@ -1,4 +1,6 @@
-use crate::{ChunkLifecycleState, ProviderEventKind, StreamRequestId, StreamRequestKind};
+use crate::{
+    ChunkAvailability, ChunkOperation, ProviderEventKind, StreamRequestId, StreamRequestKind,
+};
 use runen_spatial::ChunkId;
 use runen_spatial_demand::SpatialDemandError;
 
@@ -18,17 +20,15 @@ pub enum WorldStreamingError {
     },
     InvalidProviderEvent {
         request_id: StreamRequestId,
-        request_kind: StreamRequestKind,
         event_kind: ProviderEventKind,
-        state: ChunkLifecycleState,
+        availability: ChunkAvailability,
+        operation: ChunkOperation,
     },
-    InvalidResidentFailure {
+    InvalidBlockingFailureRetry {
         chunk_id: ChunkId,
-        state: ChunkLifecycleState,
-    },
-    InvalidFailedRetry {
-        chunk_id: ChunkId,
-        state: ChunkLifecycleState,
         desired: bool,
+        availability: ChunkAvailability,
+        operation: ChunkOperation,
+        blocking_failure: Option<StreamRequestKind>,
     },
 }
