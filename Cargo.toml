@@ -5,7 +5,6 @@ members = [
   "crates/runen_spatial_demand",
   "crates/runen_spatial_streaming",
   "adapters/godot_world_streaming",
-  "demos/chunk_streaming_demo",
   "xtask",
 ]
 

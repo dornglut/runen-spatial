@@ -113,6 +113,7 @@ fn validate_required_and_retired_paths(root: &Path) -> Result<(), String> {
         "crates/runen_spatial_index",
         "crates/runen_spatial/src/bounds.rs",
         "crates/world_core_prelude",
+        "demos/chunk_streaming_demo",
     ];
 
     for relative in REQUIRED {
@@ -137,7 +138,6 @@ fn validate_manifest_inventory(root: &Path) -> Result<(), String> {
         "crates/runen_spatial/Cargo.toml".to_owned(),
         "crates/runen_spatial_demand/Cargo.toml".to_owned(),
         "crates/runen_spatial_streaming/Cargo.toml".to_owned(),
-        "demos/chunk_streaming_demo/Cargo.toml".to_owned(),
         "xtask/Cargo.toml".to_owned(),
     ]);
 
@@ -174,7 +174,6 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         "crates/runen_spatial/Cargo.toml",
         "crates/runen_spatial_demand/Cargo.toml",
         "crates/runen_spatial_streaming/Cargo.toml",
-        "demos/chunk_streaming_demo/Cargo.toml",
     ] {
         let manifest = read_text(root, relative)?;
         for required in [
@@ -437,11 +436,6 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
                 ));
             }
         }
-    }
-
-    let demo_manifest = read_text(root, "demos/chunk_streaming_demo/Cargo.toml")?;
-    if demo_manifest.contains("../../../") || demo_manifest.contains("tile_topology") {
-        return Err("demo must not depend on an external sibling checkout".to_owned());
     }
 
     let include_macro = ["include!", "("].concat();

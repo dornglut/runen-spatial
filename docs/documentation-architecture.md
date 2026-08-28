@@ -17,7 +17,7 @@ RunenSpatial uses one durable owner per concern. A document may link to another 
 | Demand concepts and current demand baseline | `docs/spatial-demand.md` |
 | Availability-controller concepts and current lifecycle | `docs/streaming-lifecycle.md` |
 | Grid/clipmap/ring composition guidance | `docs/grid-composition.md` |
-| Current experimental Godot consumer | `docs/godot-integration.md` |
+| Retained Godot translation integration boundary | `docs/godot-integration.md` |
 | Repository-transfer history | `docs/provenance/repository-transfer.md` |
 | Runtime API and behavior | Rust public API, rustdoc, and tests in the owning package |
 | Detailed active work/acceptance | GitHub issues and pull requests |

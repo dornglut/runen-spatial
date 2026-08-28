@@ -34,11 +34,7 @@ It owns request correlation, budgeted load/unload progression, lifecycle/event m
 
 ### `godot_world_streaming`
 
-Optional, non-default, non-publishable experimental adapter over the framework packages plus Godot. It is not framework authority and must not leak Godot semantics into core packages.
-
-### `chunk_streaming_demo`
-
-Repository-local executable demonstrating the current public framework flow. It is not an API or conformance authority.
+Retained optional, non-default, non-publishable pre-release translation adapter over the framework packages plus Godot. Maintained consumer evidence justifies the integration artifact, but it is not framework authority and must not leak Godot semantics into core packages.
 
 ### `xtask`
 
@@ -48,10 +44,13 @@ Private repository tooling behind `cargo validate`. It is not part of the runtim
 
 ```text
 runen-spatial
+└── runen-spatial-demand
+    └── runen-spatial-streaming
+
+godot_world_streaming        (retained optional integration)
+├── runen-spatial
 ├── runen-spatial-demand
-│   └── runen-spatial-streaming
-├── chunk_streaming_demo      (consumer)
-└── godot_world_streaming     (optional consumer)
+└── runen-spatial-streaming
 ```
 
 `runen-spatial-streaming` also depends directly on `runen-spatial`.
