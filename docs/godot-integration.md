@@ -1,49 +1,15 @@
 # Godot Integration
 
-This documents the optional `adapters/godot_world_streaming` crate, which depends directly on `runen-spatial`, `runen-spatial-demand`, and `runen-spatial-streaming`.
+`adapters/godot_world_streaming` is an optional, non-default, non-publishable experimental consumer of the RunenSpatial packages.
 
-The Godot adapter is adapter-only. It translates Godot-facing configuration and
-positions, ticks the core controller, and emits Godot-friendly lifecycle signals.
+It exists to exercise integration with a Godot node and signal/property surface. It is not framework authority and does not justify Godot dependencies or engine semantics in core packages.
 
-## Signals
+## Current role
 
-Use precise lifecycle names:
+The adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs, emits framework requests/events through Godot-visible methods/signals, and can rebuild its controller from node configuration.
 
-- `chunk_load_requested(request_id, x, y, z)`
-- `chunk_provider_started(request_id, x, y, z)`
-- `chunk_provider_completed(request_id, x, y, z)`
-- `chunk_provider_failed(request_id, x, y, z)`
-- `chunk_resident`
-- `chunk_unload_requested(request_id, x, y, z)`
-- `chunk_unloaded`
+Its current behavior includes adapter-specific conversions and state-reset semantics that still require a dedicated ownership/API audit. In particular, public numeric conversion, request-ID representation, configuration mutation, and controller rebuild behavior must not silently weaken the checked framework contracts.
 
-Do not emit `chunk_ready` from the core adapter. "Ready" can mean content loaded,
-visualized, physics-ready, gameplay-ready, or save-ready. Those meanings belong
-to the host application or domain-specific systems.
+## Maturity
 
-## In Scope
-
-- Convert Godot `Vector3` values to finite global `f64` meters and construct a
-  checked `WorldPosition` in the controller namespace.
-- Build `GridPartitionConfig` and chunking config from Godot-facing fields.
-- Tick `WorldStreamingController`.
-- Translate core events to Godot signals.
-- Accept provider-started, provider-completed, and provider-failed callbacks
-  from host code.
-- Treat provider work as non-cancellable. Desired-state reversals are resolved
-  by provider completion or failure events.
-- Report checked position or streaming failures through `streaming_error`.
-
-Coordinate signal and callback components are signed 64-bit values, matching
-the stable core coordinate contract.
-
-## Out of Scope
-
-- Godot node/scene ownership for chunks.
-- MeshInstance creation.
-- Asset catalog lookup.
-- Blender/glTF loading.
-- Save formats.
-- SDF payload loading.
-- ECS spawning.
-- Renderer resources.
+No production-support, stable Godot API, or permanent repository-ownership promise is made. Retention of this adapter requires maintained-consumer evidence and tests that justify keeping an engine-specific integration in the standalone framework repository. Otherwise it should be removed and integration should live with the consuming product/lab.

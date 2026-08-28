@@ -8,7 +8,7 @@ Use GitHub private vulnerability reporting for `dornglut/runen-spatial` when ava
 
 ## Supported versions
 
-RunenSpatial is private, unpublished, and pre-release. Security fixes are applied to the default branch and to exact revisions explicitly consumed by downstream projects. No broader support window is promised until a release policy is accepted.
+RunenSpatial is public, unpublished, and pre-release. Security fixes target the default branch and exact revisions explicitly consumed by downstream projects. No broader release support window is promised until a release policy is accepted.
 
 ## Scope
 

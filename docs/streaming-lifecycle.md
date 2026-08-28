@@ -1,135 +1,28 @@
-# Streaming Lifecycle
+# Streaming Availability Lifecycle
 
-`runen-spatial-streaming` is the payload-neutral request/event lifecycle controller.
+This document explains the current responsibility of `runen-spatial-streaming`. Exact public signatures and transition tests are owned by the package source, rustdoc, and tests.
 
-The crate is designed from first principles. Runenwerk engine files such as
-`engine/src/plugins/world/chunks/lifecycle.rs` are reference material only. They
-must not be mechanically extracted because they contain engine, dirty-state,
-build-generation, ECS-resource, and render-cache concepts.
+## Ownership
 
-## Provider Ownership
+The streaming package coordinates content-agnostic availability work: desired/undesired chunk intent, budgeted load/unload request issuance, correlation with backend events, deterministic request/event ordering, reversal, failure reporting, and diagnostics.
 
-The crate uses request/event ownership:
+The backend owns actual IO and payload/resource creation. The host owns product semantics, payload caches, gameplay/ECS activation, rendering, retry/backoff policy not explicitly modeled by the framework, and application degradation decisions.
 
-```text
-runen-spatial-streaming emits StreamRequest.
-Host or adapter performs loading.
-Host reports ProviderEvent back.
-runen-spatial-streaming updates lifecycle.
-```
+## Current lifecycle
 
-Do not put provider traits, async runtimes, thread pools, filesystem IO, asset
-catalogs, SDF stores, mesh generation, renderer uploads, or Godot scene logic in
-the core.
+The implementation currently represents requested, loaded, active, parked, evicted, and failed conditions in one combined lifecycle enum. Load/unload requests are correlated by request IDs and drained through per-tick budgets. Backend events drive completion/failure transitions.
 
-## Lifecycle
+This combined model is the current baseline, not proof that availability, operation, activation, and failure are one durable state dimension.
 
-Use this lifecycle:
+## Known contract debt
 
-```text
-Absent
-  -> LoadQueued
-  -> LoadRequested
-  -> Loading
-  -> Resident
-  -> UnloadQueued
-  -> UnloadRequested
-  -> Unloading
-  -> Absent
+The current baseline still requires explicit resolution of:
 
-Loading -> Failed
-Resident -> Failed
-Failed -> LoadQueued by explicit retry
-Failed -> Absent when no longer desired
-```
+- load failure versus unload failure semantics and whether residency is preserved;
+- request-ID exhaustion/non-reuse behavior;
+- post-load payload/result pairing;
+- queue and record-retention bounds during long-running exploration;
+- orthogonal desired, observed availability, in-flight operation, activation, and last-failure state where required;
+- deterministic pressure/event behavior under bounded capacity.
 
-`Queued` means the controller wants to spend budget on the transition.
-
-`Requested` means the controller has emitted a request and is waiting for the
-host/provider handoff.
-
-`Loading` and `Unloading` mean the host has acknowledged provider work started.
-
-`Resident` means the core knows the provider completed the chunk residency
-transition. It does not imply visual, physics, gameplay, or save readiness.
-
-Provider work is non-cancellable in the current contract. If desired state
-changes while a load or unload request is active, the controller records the new
-desired state and waits for the provider to report completion or failure. Follow
-up load/unload queueing is then emitted deterministically.
-
-Failed chunks do not automatically retry. A desired failed chunk stays `Failed`
-until the host calls explicit retry. This prevents persistent provider failures
-from creating an unbounded retry loop.
-
-## Public API Sketch
-
-```rust
-pub struct WorldStreamingController;
-pub struct WorldStreamingConfig;
-pub struct StreamingBudgets;
-pub struct StreamingTick;
-pub struct StreamingTickOutput;
-
-pub enum ChunkLifecycleState {
-    Absent,
-    LoadQueued,
-    LoadRequested,
-    Loading,
-    Resident,
-    UnloadQueued,
-    UnloadRequested,
-    Unloading,
-    Failed,
-}
-
-pub enum StreamRequestKind {
-    Load,
-    Unload,
-}
-
-pub struct StreamRequest {
-    pub request_id: StreamRequestId,
-    pub chunk_id: runen_spatial::ChunkId,
-    pub kind: StreamRequestKind,
-    pub priority: ChunkPriority,
-}
-
-pub enum ProviderEventKind {
-    Started,
-    Completed,
-    Failed,
-}
-
-pub struct ProviderEvent {
-    pub request_id: StreamRequestId,
-    pub chunk_id: runen_spatial::ChunkId,
-    pub kind: ProviderEventKind,
-}
-
-pub enum WorldStreamingEventKind {
-    LoadQueued,
-    LoadRequested,
-    ProviderStarted,
-    ProviderCompleted,
-    ProviderFailed,
-    Resident,
-    UnloadQueued,
-    UnloadRequested,
-    Unloaded,
-}
-
-pub struct WorldStreamingEvent {
-    pub chunk_id: runen_spatial::ChunkId,
-    pub request_id: Option<StreamRequestId>,
-    pub kind: WorldStreamingEventKind,
-}
-```
-
-Events must be deterministic and ordered by stable request priority, chunk id,
-and request id.
-
-`WorldStreamingController::tick` is fallible for checked spatial math. A focus
-must use the controller's `WorldId`; a spatial failure is reported before the
-controller changes lifecycle records or queues. Broader lifecycle hardening,
-including checked request IDs, remains RS5 work.
+Those corrections must remain content-agnostic and must not move backend IO or host activation policy into this package.

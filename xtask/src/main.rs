@@ -35,8 +35,9 @@ jobs:
 "#;
 
 fn main() {
-    let result = match env::args().nth(1).as_deref() {
-        Some("validate") => validate(),
+    let mut arguments = env::args().skip(1);
+    let result = match (arguments.next().as_deref(), arguments.next()) {
+        (Some("validate"), None) => validate(),
         _ => Err("usage: cargo validate".to_owned()),
     };
 
@@ -48,10 +49,12 @@ fn main() {
 
 fn validate() -> Result<(), String> {
     let root = repository_root()?;
-    validate_repository_policy(&root)?;
-    validate_markdown_links(&root)?;
+    validate_repository_contract(&root)?;
+    validate_markdown(&root)?;
     run_validation_commands(&root)?;
-    prove_clean_repository_state(&root)
+    prove_clean_repository_state(&root)?;
+    println!("repository validation passed");
+    Ok(())
 }
 
 fn repository_root() -> Result<PathBuf, String> {
@@ -61,12 +64,11 @@ fn repository_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "xtask must live directly below the repository root".to_owned())
 }
 
-fn validate_repository_policy(root: &Path) -> Result<(), String> {
-    validate_required_files(root)?;
+fn validate_repository_contract(root: &Path) -> Result<(), String> {
+    validate_required_and_retired_paths(root)?;
     validate_manifest_inventory(root)?;
     validate_manifest_policy(root)?;
-    validate_retired_package_identities(root)?;
-    validate_retired_foundational_api_names(root)?;
+    validate_retired_surfaces(root)?;
     validate_workflow(root)?;
     validate_path_dependencies(root)?;
     validate_repository_files(root)?;
@@ -75,38 +77,7 @@ fn validate_repository_policy(root: &Path) -> Result<(), String> {
     validate_git_index(root)
 }
 
-fn validate_retired_foundational_api_names(root: &Path) -> Result<(), String> {
-    let retired = [
-        ["World", "LocalPosition"].concat(),
-        ["Camera", "RelativeFrame"].concat(),
-        ["build_camera", "_relative_frame"].concat(),
-        ["fixed", "_point_scale"].concat(),
-        ["quantization", "_scale"].concat(),
-    ];
-
-    for source_path in walk_files(root)?
-        .into_iter()
-        .filter(|path| path.extension() == Some(OsStr::new("rs")))
-        .filter(|path| {
-            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
-        })
-    {
-        let relative = relative_string(root, &source_path)?;
-        let source = fs::read_to_string(&source_path)
-            .map_err(|error| format!("failed to read {relative}: {error}"))?;
-        for retired_name in &retired {
-            if source.contains(retired_name) {
-                return Err(format!(
-                    "retired foundational API in {relative}: {retired_name}"
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_required_files(root: &Path) -> Result<(), String> {
+fn validate_required_and_retired_paths(root: &Path) -> Result<(), String> {
     const REQUIRED: &[&str] = &[
         ".cargo/config.toml",
         ".github/workflows/validation.yml",
@@ -117,38 +88,38 @@ fn validate_required_files(root: &Path) -> Result<(), String> {
         "LICENSE",
         "LICENSING.md",
         "README.md",
+        "ROADMAP.md",
         "SECURITY.md",
         "TESTING.md",
-        "docs/architecture.md",
-        "docs/package-boundaries.md",
+        "docs/documentation-architecture.md",
         "docs/provenance/repository-transfer.md",
-        "docs/roadmap.md",
-        "docs/tooling/validation.md",
         "rust-toolchain.toml",
         "xtask/Cargo.toml",
         "xtask/src/main.rs",
+    ];
+
+    const FORBIDDEN: &[&str] = &[
+        "LICENSE-MIT",
+        "LICENSE-APACHE",
+        "docs/architecture.md",
+        "docs/chunking-model.md",
+        "docs/crate-boundaries.md",
+        "docs/full-roadmap-goal-prompt.md",
+        "docs/investigations/runenspatial-extraction-boundary.md",
+        "docs/package-boundaries.md",
+        "docs/roadmap.md",
+        "docs/runenwerk-integration.md",
+        "docs/tooling/validation.md",
+        "crates/world_core_prelude",
     ];
 
     for relative in REQUIRED {
         require_file(root, relative)?;
     }
 
-    for forbidden in ["LICENSE-MIT", "LICENSE-APACHE"] {
-        if root.join(forbidden).exists() {
-            return Err(format!(
-                "stale current license file must be removed: {forbidden}"
-            ));
-        }
-    }
-
-    for forbidden in [
-        "docs/crate-boundaries.md",
-        "docs/full-roadmap-goal-prompt.md",
-    ] {
-        if root.join(forbidden).exists() {
-            return Err(format!(
-                "superseded or process-only file must be removed: {forbidden}"
-            ));
+    for relative in FORBIDDEN {
+        if root.join(relative).exists() {
+            return Err(format!("retired authority or surface must remain absent: {relative}"));
         }
     }
 
@@ -173,13 +144,13 @@ fn validate_manifest_inventory(root: &Path) -> Result<(), String> {
         .map(|path| relative_string(root, &path))
         .collect::<Result<BTreeSet<_>, _>>()?;
 
-    if actual != expected {
-        return Err(format!(
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
             "Cargo manifest inventory differs\nexpected: {expected:#?}\nactual: {actual:#?}"
-        ));
+        ))
     }
-
-    Ok(())
 }
 
 fn validate_manifest_policy(root: &Path) -> Result<(), String> {
@@ -196,15 +167,13 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         require_contains("Cargo.toml", &root_manifest, required)?;
     }
 
-    let package_manifests = [
+    for relative in [
         "crates/runen_spatial/Cargo.toml",
         "crates/runen_spatial_index/Cargo.toml",
         "crates/runen_spatial_demand/Cargo.toml",
         "crates/runen_spatial_streaming/Cargo.toml",
         "demos/chunk_streaming_demo/Cargo.toml",
-    ];
-
-    for relative in package_manifests {
+    ] {
         let manifest = read_text(root, relative)?;
         for required in [
             "rust-version.workspace = true",
@@ -235,21 +204,27 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
     }
 
     let xtask = read_text(root, "xtask/Cargo.toml")?;
-    require_contains("xtask/Cargo.toml", &xtask, "license.workspace = true")?;
-    require_contains("xtask/Cargo.toml", &xtask, "publish = false")?;
-    require_contains("xtask/Cargo.toml", &xtask, "[lints]\nworkspace = true")
-}
-
-fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
-    for retired_directory in ["crates/world_core_prelude"] {
-        if root.join(retired_directory).exists() {
-            return Err(format!(
-                "retired broad prelude directory must remain absent: {retired_directory}"
-            ));
-        }
+    for required in [
+        "license.workspace = true",
+        "publish = false",
+        "[lints]\nworkspace = true",
+    ] {
+        require_contains("xtask/Cargo.toml", &xtask, required)?;
     }
 
-    let retired = ["spatial", "spatial_index", "chunking", "world_streaming"];
+    Ok(())
+}
+
+fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
+    const RETIRED_PACKAGES: &[&str] = &["spatial", "spatial_index", "chunking", "world_streaming"];
+    let retired_api = [
+        ["World", "LocalPosition"].concat(),
+        ["Camera", "RelativeFrame"].concat(),
+        ["build_camera", "_relative_frame"].concat(),
+        ["fixed", "_point_scale"].concat(),
+        ["quantization", "_scale"].concat(),
+    ];
+
     for manifest_path in walk_files(root)?
         .into_iter()
         .filter(|path| path.file_name() == Some(OsStr::new("Cargo.toml")))
@@ -257,27 +232,14 @@ fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
         let relative = relative_string(root, &manifest_path)?;
         let manifest = fs::read_to_string(&manifest_path)
             .map_err(|error| format!("failed to read {relative}: {error}"))?;
-        for package in retired {
+
+        for package in RETIRED_PACKAGES {
             let retired_name = format!(r#"name = "{package}""#);
-            if manifest
-                .lines()
-                .map(str::trim_start)
-                .any(|line| line == retired_name)
-            {
+            if manifest.lines().map(str::trim_start).any(|line| line == retired_name) {
                 return Err(format!("retired package name in {relative}: {package}"));
             }
-            let workspace_key = [package, ".workspace"].concat();
-            let inline_key = [package, " ="].concat();
-            if manifest
-                .lines()
-                .map(str::trim_start)
-                .any(|line| line.starts_with(&workspace_key) || line.starts_with(&inline_key))
-            {
-                return Err(format!(
-                    "retired workspace dependency key in {relative}: {package}"
-                ));
-            }
         }
+
         if manifest.contains("world_core_prelude") {
             return Err(format!("retired broad prelude package in {relative}"));
         }
@@ -286,24 +248,20 @@ fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
     for source_path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
-        .filter(|path| {
-            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
-        })
+        .filter(|path| relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs"))
     {
         let relative = relative_string(root, &source_path)?;
         let source = fs::read_to_string(&source_path)
             .map_err(|error| format!("failed to read {relative}: {error}"))?;
-        for package in retired {
-            for forbidden in [
-                ["use ", package, "::"].concat(),
-                ["pub use ", package, "::"].concat(),
-                ["extern crate ", package, ";"].concat(),
-            ] {
-                if source.contains(&forbidden) {
-                    return Err(format!("retired crate import in {relative}: {forbidden}"));
-                }
+
+        for retired_name in &retired_api {
+            if source.contains(retired_name) {
+                return Err(format!("retired foundational API in {relative}: {retired_name}"));
             }
-            if contains_retired_crate_path(&source, package) {
+        }
+
+        for package in RETIRED_PACKAGES {
+            if contains_standalone_crate_path(&source, package) {
                 return Err(format!("retired crate path in {relative}: {package}::"));
             }
         }
@@ -312,15 +270,14 @@ fn validate_retired_package_identities(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn contains_retired_crate_path(source: &str, package: &str) -> bool {
+fn contains_standalone_crate_path(source: &str, package: &str) -> bool {
     let token = [package, "::"].concat();
     let mut search_start = 0;
 
     while let Some(relative_index) = source[search_start..].find(&token) {
         let index = search_start + relative_index;
         let preceding = source[..index].chars().next_back();
-        if preceding.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_')
-        {
+        if preceding.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_') {
             return true;
         }
         search_start = index + token.len();
@@ -336,20 +293,7 @@ fn validate_workflow(root: &Path) -> Result<(), String> {
             "{WORKFLOW_PATH} must remain the exact read-only shared-workflow caller"
         ));
     }
-
-    require_contains(WORKFLOW_PATH, &workflow, WORKFLOW_REVISION)?;
-    for retired in [
-        "b6caad377102ca73794efaf734a65903b8efa829",
-        "79405c457b5b99d5cb9957c9bcdc475109e1e3bf",
-    ] {
-        if workflow.contains(retired) {
-            return Err(format!(
-                "{WORKFLOW_PATH} uses retired shared revision {retired}"
-            ));
-        }
-    }
-
-    Ok(())
+    require_contains(WORKFLOW_PATH, &workflow, WORKFLOW_REVISION)
 }
 
 fn validate_path_dependencies(root: &Path) -> Result<(), String> {
@@ -403,10 +347,7 @@ fn validate_repository_files(root: &Path) -> Result<(), String> {
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
         if metadata.file_type().is_symlink() {
-            return Err(format!(
-                "tracked repository symlink is forbidden: {}",
-                path.display()
-            ));
+            return Err(format!("repository symlink is forbidden: {}", path.display()));
         }
         if is_authored_text(&path) && metadata.len() > MAX_AUTHORED_BYTES {
             return Err(format!(
@@ -416,7 +357,6 @@ fn validate_repository_files(root: &Path) -> Result<(), String> {
             ));
         }
     }
-
     Ok(())
 }
 
@@ -424,23 +364,12 @@ fn is_authored_text(path: &Path) -> bool {
     if path.file_name() == Some(OsStr::new("Cargo.lock")) {
         return false;
     }
-    if matches!(
-        path.file_name().and_then(OsStr::to_str),
-        Some(
-            "README.md"
-                | "AGENTS.md"
-                | "ARCHITECTURE.md"
-                | "TESTING.md"
-                | "SECURITY.md"
-                | "LICENSE"
-                | "LICENSING.md"
-        )
-    ) {
-        return true;
-    }
     matches!(
         path.extension().and_then(OsStr::to_str),
         Some("md" | "rs" | "toml" | "yml" | "yaml" | "json" | "gd" | "txt")
+    ) || matches!(
+        path.file_name().and_then(OsStr::to_str),
+        Some("LICENSE" | "LICENSING.md")
     )
 }
 
@@ -449,25 +378,31 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
         "README.md",
         "AGENTS.md",
         "ARCHITECTURE.md",
+        "ROADMAP.md",
         "TESTING.md",
-        "docs/architecture.md",
-        "docs/chunking-model.md",
+        "SECURITY.md",
+        "docs/documentation-architecture.md",
         "docs/godot-integration.md",
         "docs/grid-composition.md",
-        "docs/package-boundaries.md",
-        "docs/roadmap.md",
-        "docs/runenwerk-integration.md",
+        "docs/spatial-demand.md",
         "docs/spatial-model.md",
         "docs/streaming-lifecycle.md",
-        "docs/tooling/validation.md",
+    ];
+    const STALE_AUTHORITY: &[&str] = &[
+        "Crystonix/",
+        "aschenrot/spatial_streaming",
+        "## Current child",
+        "Accepted base: `",
+        "Current PR:",
+        "CI run ",
     ];
 
     for relative in ACTIVE_DOCS {
         let text = read_text(root, relative)?;
-        for forbidden in ["Crystonix/", "aschenrot/spatial_streaming"] {
+        for forbidden in STALE_AUTHORITY {
             if text.contains(forbidden) {
                 return Err(format!(
-                    "active documentation contains stale authority `{forbidden}`: {relative}"
+                    "active documentation contains stale/live authority {forbidden:?}: {relative}"
                 ));
             }
         }
@@ -480,15 +415,11 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
 
     let include_macro = ["include!", "("].concat();
     let include_bytes_macro = ["include_bytes!", "("].concat();
-    let xtask_source = root.join("xtask/src/main.rs");
-
     for path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
+        .filter(|path| relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs"))
     {
-        if path == xtask_source {
-            continue;
-        }
         let text = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
         if text.contains(&include_macro) || text.contains(&include_bytes_macro) {
@@ -511,12 +442,9 @@ fn validate_provenance(root: &Path) -> Result<(), String> {
         "8d5dae4123dd3e67f572f3c0c32aac7362975aaf",
         "private normalization",
         "not a complete full-history secret scan",
+        "public",
     ] {
-        require_contains(
-            "docs/provenance/repository-transfer.md",
-            &provenance,
-            required,
-        )?;
+        require_contains("docs/provenance/repository-transfer.md", &provenance, required)?;
     }
     Ok(())
 }
@@ -531,52 +459,129 @@ fn validate_git_index(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_markdown_links(root: &Path) -> Result<(), String> {
-    for path in walk_files(root)?
+fn validate_markdown(root: &Path) -> Result<(), String> {
+    for file in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("md")))
     {
-        let text = fs::read_to_string(&path)
-            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        for target in markdown_targets(&text) {
-            if target.is_empty()
-                || target.starts_with('#')
-                || target.starts_with("http://")
-                || target.starts_with("https://")
-                || target.starts_with("mailto:")
-            {
+        let content = fs::read_to_string(&file)
+            .map_err(|error| format!("failed to read {}: {error}", file.display()))?;
+
+        if let Some(target) = reference_style_local_targets(&content).first() {
+            return Err(format!(
+                "repository-local Markdown links must use inline relative syntax in {}: {target}",
+                relative_string(root, &file)?
+            ));
+        }
+
+        for target in markdown_link_targets(&content) {
+            let Some(local_target) = local_markdown_target(&target) else {
                 continue;
-            }
-            let target = target.split('#').next().unwrap_or_default();
-            let target = target.split('?').next().unwrap_or_default();
-            if target.is_empty() {
-                continue;
-            }
-            let base = path.parent().unwrap_or(root);
-            let resolved = base.join(target);
-            if !resolved.exists() {
+            };
+            let parent = file
+                .parent()
+                .ok_or_else(|| format!("{} has no parent directory", file.display()))?;
+            if !parent.join(local_target).exists() {
                 return Err(format!(
                     "broken Markdown link in {}: {target}",
-                    path.display()
+                    relative_string(root, &file)?
                 ));
             }
         }
     }
+
     Ok(())
 }
 
-fn markdown_targets(text: &str) -> Vec<&str> {
+fn markdown_link_targets(content: &str) -> Vec<String> {
+    markdown_lines_outside_fences(content)
+        .flat_map(inline_link_targets)
+        .collect()
+}
+
+fn reference_style_local_targets(content: &str) -> Vec<String> {
+    markdown_lines_outside_fences(content)
+        .filter_map(reference_definition_target)
+        .filter(|target| local_markdown_target(target).is_some())
+        .collect()
+}
+
+fn markdown_lines_outside_fences(content: &str) -> impl Iterator<Item = &str> {
+    let mut active_fence: Option<&'static str> = None;
+    content.lines().filter(move |line| {
+        let trimmed = line.trim_start();
+        let marker = if trimmed.starts_with("```") {
+            Some("```")
+        } else if trimmed.starts_with("~~~") {
+            Some("~~~")
+        } else {
+            None
+        };
+
+        if let Some(marker) = marker {
+            match active_fence {
+                None => active_fence = Some(marker),
+                Some(active) if active == marker => active_fence = None,
+                Some(_) => {}
+            }
+            return false;
+        }
+
+        active_fence.is_none()
+    })
+}
+
+fn inline_link_targets(line: &str) -> Vec<String> {
     let mut targets = Vec::new();
-    let mut remaining = text;
-    while let Some(start) = remaining.find("](") {
-        remaining = &remaining[start + 2..];
-        let Some(end) = remaining.find(')') else {
+    let mut cursor = 0;
+
+    while let Some(relative_start) = line[cursor..].find("](") {
+        let start = cursor + relative_start + 2;
+        let Some(relative_end) = line[start..].find(')') else {
             break;
         };
-        targets.push(remaining[..end].trim_matches(['<', '>']));
-        remaining = &remaining[end + 1..];
+        let end = start + relative_end;
+        if let Some(target) = normalized_markdown_target(&line[start..end]) {
+            targets.push(target.to_owned());
+        }
+        cursor = end + 1;
     }
+
     targets
+}
+
+fn reference_definition_target(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let rest = trimmed.strip_prefix('[')?;
+    if rest.starts_with('^') {
+        return None;
+    }
+    let marker_end = rest.find("]:")?;
+    normalized_markdown_target(&rest[marker_end + 2..]).map(str::to_owned)
+}
+
+fn normalized_markdown_target(raw: &str) -> Option<&str> {
+    let raw = raw.trim();
+    let target = if raw.starts_with('<') {
+        raw.strip_prefix('<')?.split_once('>')?.0
+    } else {
+        raw.split_whitespace().next()?
+    };
+    (!target.is_empty()).then_some(target)
+}
+
+fn local_markdown_target(target: &str) -> Option<&str> {
+    if target.starts_with('#')
+        || target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+        || target.starts_with("data:")
+    {
+        return None;
+    }
+
+    let path = target.split('#').next().unwrap_or("");
+    (!path.is_empty() && !Path::new(path).is_absolute()).then_some(path)
 }
 
 fn run_validation_commands(root: &Path) -> Result<(), String> {
@@ -642,56 +647,63 @@ fn prove_clean_repository_state(root: &Path) -> Result<(), String> {
     if status.trim().is_empty() {
         Ok(())
     } else {
-        Err(format!(
-            "validation changed the tracked repository:\n{status}"
-        ))
+        Err(format!("validation changed the tracked repository:\n{status}"))
     }
 }
 
-fn run(root: &Path, program: &str, args: &[&str]) -> Result<(), String> {
+fn run(root: &Path, program: &str, arguments: &[&str]) -> Result<(), String> {
     let status = Command::new(program)
-        .args(args)
+        .args(arguments)
         .current_dir(root)
         .stdin(Stdio::null())
         .status()
-        .map_err(|error| format!("failed to run {program} {}: {error}", args.join(" ")))?;
+        .map_err(|error| {
+            format!("failed to run {program} {}: {error}", arguments.join(" "))
+        })?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("command failed: {program} {}", args.join(" ")))
+        Err(format!("command failed: {program} {}", arguments.join(" ")))
     }
 }
 
 fn run_with_env(
     root: &Path,
     program: &str,
-    args: &[&str],
+    arguments: &[&str],
     key: &str,
     value: &str,
 ) -> Result<(), String> {
     let status = Command::new(program)
-        .args(args)
+        .args(arguments)
         .env(key, value)
         .current_dir(root)
         .stdin(Stdio::null())
         .status()
-        .map_err(|error| format!("failed to run {program} {}: {error}", args.join(" ")))?;
+        .map_err(|error| {
+            format!("failed to run {program} {}: {error}", arguments.join(" "))
+        })?;
     if status.success() {
         Ok(())
     } else {
-        Err(format!("command failed: {program} {}", args.join(" ")))
+        Err(format!("command failed: {program} {}", arguments.join(" ")))
     }
 }
 
-fn run_output(root: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+fn run_output(root: &Path, program: &str, arguments: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
-        .args(args)
+        .args(arguments)
         .current_dir(root)
         .stdin(Stdio::null())
         .output()
-        .map_err(|error| format!("failed to run {program} {}: {error}", args.join(" ")))?;
+        .map_err(|error| {
+            format!("failed to run {program} {}: {error}", arguments.join(" "))
+        })?;
     if !output.status.success() {
-        return Err(format!("command failed: {program} {}", args.join(" ")));
+        return Err(format!(
+            "command failed: {program} {}",
+            arguments.join(" ")
+        ));
     }
     String::from_utf8(output.stdout)
         .map_err(|error| format!("{program} output was not UTF-8: {error}"))
@@ -722,6 +734,7 @@ fn walk_directory(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) -> Re
         ) {
             continue;
         }
+
         let file_type = entry
             .file_type()
             .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
