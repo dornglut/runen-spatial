@@ -296,14 +296,24 @@ impl WorldStreamingController {
         self.prune_neutral_records();
 
         let (in_flight_loads, in_flight_unloads) = self.in_flight_counts();
+        let remaining_load_capacity = self
+            .capacity
+            .max_in_flight_loads
+            .checked_sub(in_flight_loads)
+            .expect("in-flight load count must not exceed configured capacity");
+        let remaining_unload_capacity = self
+            .capacity
+            .max_in_flight_unloads
+            .checked_sub(in_flight_unloads)
+            .expect("in-flight unload count must not exceed configured capacity");
         let load_limit = self
             .budgets
             .max_load_requests_per_tick
-            .min(self.capacity.max_in_flight_loads.saturating_sub(in_flight_loads));
+            .min(remaining_load_capacity);
         let unload_limit = self
             .budgets
             .max_unload_requests_per_tick
-            .min(self.capacity.max_in_flight_unloads.saturating_sub(in_flight_unloads));
+            .min(remaining_unload_capacity);
 
         let load_candidates = self.load_candidates(load_limit);
         let unload_candidates = self.unload_candidates(unload_limit);
@@ -597,7 +607,8 @@ impl WorldStreamingController {
         let available_record_slots = self
             .capacity
             .max_tracked_records
-            .saturating_sub(self.records.len());
+            .checked_sub(self.records.len())
+            .expect("tracked record count must not exceed configured capacity");
         let limit = limit.min(available_record_slots);
         if limit == 0 {
             return Vec::new();
@@ -717,7 +728,7 @@ impl WorldStreamingController {
             let request = StreamRequest {
                 request_id,
                 chunk_id,
-                kind: StreamRequestKind::Unload,
+                kind,
                 rank,
             };
             record.operation = ChunkOperation::UnloadRequested(request);
@@ -775,10 +786,14 @@ impl WorldStreamingController {
 
 #[cfg(test)]
 mod tests {
-    use super::{StreamingCapacity, WorldStreamingConfig, WorldStreamingController};
+    use super::{
+        StreamingCapacity, StreamingTick, WorldStreamingConfig, WorldStreamingController,
+    };
     use crate::StreamRequestId;
-    use runen_spatial::{GridPartitionConfig, WorldId};
-    use runen_spatial_demand::DemandLimits;
+    use runen_spatial::{GridPartitionConfig, WorldId, WorldPosition};
+    use runen_spatial_demand::{
+        DemandFocus, DemandLimits, DemandSourceChange, DemandSourceId, DemandSourceSnapshot,
+    };
 
     fn controller() -> WorldStreamingController {
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
@@ -805,6 +820,39 @@ mod tests {
         controller.next_request_id = StreamRequestId::try_new(u64::MAX);
 
         assert!(controller.reserve_request_ids(2).is_none());
+        assert_eq!(controller.next_request_id.unwrap().get(), u64::MAX);
+    }
+
+    #[test]
+    fn exhausted_tick_materializes_no_selected_load_records() {
+        let mut controller = controller();
+        controller.next_request_id = StreamRequestId::try_new(u64::MAX);
+        let focus = DemandFocus::try_new(
+            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            1,
+            1,
+            0,
+            0,
+        )
+        .unwrap();
+        let snapshot = DemandSourceSnapshot::try_new(Some(focus), []).unwrap();
+
+        let output = controller
+            .tick(StreamingTick::from_demand_changes([
+                DemandSourceChange::Replace {
+                    source_id: DemandSourceId::new(0),
+                    snapshot,
+                },
+            ]))
+            .unwrap();
+
+        assert!(output.request_id_exhausted);
+        assert!(output.requests.is_empty());
+        assert!(output.events.is_empty());
+        assert_eq!(controller.records().count(), 0);
+        assert_eq!(controller.pending_requests().count(), 0);
+        assert_eq!(controller.effective_demand().len(), 9);
+        assert_eq!(output.pressure.deferred_loads(), 9);
         assert_eq!(controller.next_request_id.unwrap().get(), u64::MAX);
     }
 }
