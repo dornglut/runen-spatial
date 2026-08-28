@@ -3,7 +3,8 @@ use godot::classes::{INode, Node};
 use godot::prelude::*;
 use runen_spatial::{ChunkId, GridPartitionConfig, SpatialMathError, WorldId, WorldPosition};
 use runen_spatial_demand::{
-    ChunkLoadOrder, ChunkStreamingConfig, ChunkStreamingMode, StreamingFocus,
+    DemandFocus, DemandLimits, DemandSourceChange, DemandSourceId, DemandSourceSnapshot,
+    SpatialDemandError,
 };
 use runen_spatial_streaming::{
     ChunkLifecycleState, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
@@ -28,7 +29,6 @@ pub struct GodotWorldStreamingNode {
     unload_radius_chunks: i32,
     vertical_load_radius_chunks: i32,
     vertical_unload_radius_chunks: i32,
-    planar_xz_mode: bool,
 
     max_load_requests_per_tick: usize,
     max_unload_requests_per_tick: usize,
@@ -50,7 +50,6 @@ impl INode for GodotWorldStreamingNode {
             unload_radius_chunks: 6,
             vertical_load_radius_chunks: 1,
             vertical_unload_radius_chunks: 2,
-            planar_xz_mode: true,
             max_load_requests_per_tick: 4,
             max_unload_requests_per_tick: 4,
             controller: None,
@@ -142,6 +141,19 @@ impl GodotWorldStreamingNode {
         vertical_load_radius_chunks: i32,
         vertical_unload_radius_chunks: i32,
     ) {
+        let radii = match requested_radii([
+            load_radius_chunks,
+            unload_radius_chunks,
+            vertical_load_radius_chunks,
+            vertical_unload_radius_chunks,
+        ]) {
+            Ok(radii) => radii,
+            Err(error) => {
+                self.report_demand_error(error);
+                return;
+            }
+        };
+        let _ = radii;
         self.load_radius_chunks = load_radius_chunks;
         self.unload_radius_chunks = unload_radius_chunks;
         self.vertical_load_radius_chunks = vertical_load_radius_chunks;
@@ -164,25 +176,13 @@ impl GodotWorldStreamingNode {
     }
 
     #[func]
-    pub fn set_planar_xz_mode(&mut self) {
-        self.planar_xz_mode = true;
-        self.rebuild_controller();
-    }
-
-    #[func]
-    pub fn set_volume_3d_mode(&mut self) {
-        self.planar_xz_mode = false;
-        self.rebuild_controller();
-    }
-
-    #[func]
     pub fn reset_streaming_state(&mut self) {
         self.rebuild_controller();
     }
 
     #[func]
     pub fn update_focus_from_vector3(&mut self, position: Vector3) {
-        let Some(controller) = &mut self.controller else {
+        let Some(controller) = self.controller.as_ref() else {
             return;
         };
 
@@ -195,7 +195,25 @@ impl GodotWorldStreamingNode {
                     return;
                 }
             };
-        match controller.tick(StreamingTick::from_focus(StreamingFocus::new(position))) {
+        let changes = match demand_changes_from_node_values(
+            position,
+            [
+                self.load_radius_chunks,
+                self.unload_radius_chunks,
+                self.vertical_load_radius_chunks,
+                self.vertical_unload_radius_chunks,
+            ],
+        ) {
+            Ok(transaction) => transaction,
+            Err(error) => {
+                self.report_demand_error(error);
+                return;
+            }
+        };
+        let Some(controller) = &mut self.controller else {
+            return;
+        };
+        match controller.tick(StreamingTick::from_demand_changes(changes)) {
             Ok(output) => self.emit_tick_output(output.requests, output.events),
             Err(error) => {
                 let message = GString::from(format!("{error:?}").as_str());
@@ -257,14 +275,6 @@ impl GodotWorldStreamingNode {
         dict.set(
             "vertical_unload_radius_chunks",
             self.vertical_unload_radius_chunks,
-        );
-        dict.set(
-            "streaming_mode",
-            if self.planar_xz_mode {
-                "planar_xz"
-            } else {
-                "volume_3d"
-            },
         );
         dict.set(
             "max_load_requests_per_tick",
@@ -391,37 +401,34 @@ impl GodotWorldStreamingNode {
     fn rebuild_controller(&mut self) {
         match self.streaming_config() {
             Ok(config) => self.controller = Some(WorldStreamingController::new(config)),
-            Err(error) => self.report_spatial_error(error),
+            Err(error) => self.report_demand_error(error),
         }
     }
 
-    fn streaming_config(&self) -> Result<WorldStreamingConfig, SpatialMathError> {
+    fn streaming_config(&self) -> Result<WorldStreamingConfig, SpatialDemandError> {
         let partition = partition_from_node_values(
             self.chunk_edge_meters,
             [self.region_dim_x, self.region_dim_y, self.region_dim_z],
         )?;
 
-        let mut config = WorldStreamingConfig::new(
-            WorldId(self.world_id),
-            partition,
-            ChunkStreamingConfig {
-                load_radius_chunks: self.load_radius_chunks,
-                unload_radius_chunks: self.unload_radius_chunks,
-                vertical_load_radius_chunks: self.vertical_load_radius_chunks,
-                vertical_unload_radius_chunks: self.vertical_unload_radius_chunks,
-                mode: if self.planar_xz_mode {
-                    ChunkStreamingMode::PlanarXZ
-                } else {
-                    ChunkStreamingMode::Volume3D
-                },
-                load_order: ChunkLoadOrder::NearestFirst,
-            },
-        );
+        requested_radii([
+            self.load_radius_chunks,
+            self.unload_radius_chunks,
+            self.vertical_load_radius_chunks,
+            self.vertical_unload_radius_chunks,
+        ])?;
+        let mut config =
+            WorldStreamingConfig::new(WorldId(self.world_id), partition, DemandLimits::default());
         config.budgets = self.streaming_budgets();
         Ok(config)
     }
 
     fn report_spatial_error(&mut self, error: SpatialMathError) {
+        let message = GString::from(format!("{error:?}").as_str());
+        self.signals().streaming_error().emit(&message);
+    }
+
+    fn report_demand_error(&mut self, error: SpatialDemandError) {
         let message = GString::from(format!("{error:?}").as_str());
         self.signals().streaming_error().emit(&message);
     }
@@ -478,6 +485,59 @@ fn partition_from_node_values(
     GridPartitionConfig::try_new(f64::from(chunk_edge_meters), region_chunk_dims)
 }
 
+const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
+
+fn requested_radii(requested: [i32; 4]) -> Result<[u32; 4], SpatialDemandError> {
+    let [
+        horizontal_desired,
+        horizontal_retain,
+        vertical_desired,
+        vertical_retain,
+    ] = requested;
+    let radii = [
+        u32::try_from(horizontal_desired).map_err(|_| SpatialDemandError::CountOverflow {
+            operation: "Godot demand radius",
+        })?,
+        u32::try_from(horizontal_retain).map_err(|_| SpatialDemandError::CountOverflow {
+            operation: "Godot demand radius",
+        })?,
+        u32::try_from(vertical_desired).map_err(|_| SpatialDemandError::CountOverflow {
+            operation: "Godot demand radius",
+        })?,
+        u32::try_from(vertical_retain).map_err(|_| SpatialDemandError::CountOverflow {
+            operation: "Godot demand radius",
+        })?,
+    ];
+    if radii[1] < radii[0] {
+        return Err(SpatialDemandError::RetainRadiusBelowDesired {
+            axis: runen_spatial_demand::DemandAxis::Horizontal,
+            desired: radii[0],
+            retain: radii[1],
+        });
+    }
+    if radii[3] < radii[2] {
+        return Err(SpatialDemandError::RetainRadiusBelowDesired {
+            axis: runen_spatial_demand::DemandAxis::Vertical,
+            desired: radii[2],
+            retain: radii[3],
+        });
+    }
+    Ok(radii)
+}
+
+fn demand_changes_from_node_values(
+    position: WorldPosition,
+    requested: [i32; 4],
+) -> Result<Vec<DemandSourceChange>, SpatialDemandError> {
+    let radii = requested_radii(requested)?;
+    let focus = DemandFocus::try_new(position, radii[0], radii[1], radii[2], radii[3])?;
+    let snapshot = DemandSourceSnapshot::try_new(Some(focus), [])?;
+    Ok(vec![DemandSourceChange::Replace {
+        source_id: NODE_FOCUS_SOURCE,
+        snapshot,
+    }])
+}
+
 fn request_id_to_i64(request_id: StreamRequestId) -> i64 {
     i64::try_from(request_id.0).unwrap_or(i64::MAX)
 }
@@ -489,8 +549,12 @@ fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
 
 #[cfg(test)]
 mod tests {
-    use super::{partition_from_node_values, requested_region_dims};
-    use runen_spatial::SpatialMathError;
+    use super::{
+        NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
+        requested_radii, requested_region_dims,
+    };
+    use runen_spatial::{SpatialMathError, WorldId, WorldPosition};
+    use runen_spatial_demand::{DemandAxis, DemandSourceChange, SpatialDemandError};
 
     #[test]
     fn partition_values_reject_invalid_edges_without_repairing_them() {
@@ -519,5 +583,58 @@ mod tests {
             partition_from_node_values(24.0, requested_region_dims([3, 4, 5]).unwrap()).unwrap();
         assert_eq!(config.chunk_edge_meters(), 24.0);
         assert_eq!(config.region_chunk_dims(), [3, 4, 5]);
+    }
+
+    #[test]
+    fn demand_radii_reject_every_invalid_field_without_repair() {
+        for radii in [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]] {
+            assert!(matches!(
+                requested_radii(radii),
+                Err(SpatialDemandError::CountOverflow {
+                    operation: "Godot demand radius"
+                })
+            ));
+        }
+        assert_eq!(
+            requested_radii([2, 1, 0, 0]),
+            Err(SpatialDemandError::RetainRadiusBelowDesired {
+                axis: DemandAxis::Horizontal,
+                desired: 2,
+                retain: 1,
+            })
+        );
+        assert_eq!(
+            requested_radii([0, 0, 2, 1]),
+            Err(SpatialDemandError::RetainRadiusBelowDesired {
+                axis: DemandAxis::Vertical,
+                desired: 2,
+                retain: 1,
+            })
+        );
+        assert_eq!(requested_radii([2, 3, 4, 5]), Ok([2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn adapter_transaction_is_a_complete_stable_source_replacement() {
+        let position = WorldPosition::try_new(WorldId(23), [12.0, 0.0, -4.0]).unwrap();
+        let changes = demand_changes_from_node_values(position, [2, 3, 4, 5]).unwrap();
+        let changes = changes.iter().collect::<Vec<_>>();
+        assert_eq!(changes.len(), 1);
+        match changes[0] {
+            DemandSourceChange::Replace {
+                source_id,
+                snapshot,
+            } => {
+                assert_eq!(*source_id, NODE_FOCUS_SOURCE);
+                let focus = snapshot.focus().unwrap();
+                assert_eq!(focus.position(), position);
+                assert_eq!(focus.horizontal_desired_radius(), 2);
+                assert_eq!(focus.horizontal_retain_radius(), 3);
+                assert_eq!(focus.vertical_desired_radius(), 4);
+                assert_eq!(focus.vertical_retain_radius(), 5);
+                assert_eq!(snapshot.pins().count(), 0);
+            }
+            DemandSourceChange::Remove { .. } => panic!("adapter must publish a replacement"),
+        }
     }
 }

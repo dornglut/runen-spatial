@@ -12,7 +12,7 @@ The consuming host owns scenes, providers, payload caches, generation, realizati
 
 ## Current role
 
-The adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs, emits framework requests/events through Godot-visible methods and signals, and can rebuild its controller from node configuration.
+The adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs through one stable internal demand source, emits framework requests/events through Godot-visible methods and signals, and can rebuild its controller from node configuration.
 
 Its current numeric conversion, request-ID representation, configuration-mutation, and controller-reset behavior remain pre-release integration contracts. They should be hardened only after the corresponding host-neutral demand and lifecycle contracts stabilize, avoiding duplicate semantic churn.
 

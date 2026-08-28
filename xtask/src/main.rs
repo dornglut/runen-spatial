@@ -231,6 +231,13 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
         ["quantization", "_scale"].concat(),
         ["Spatial", "Aabb3"].concat(),
         ["Spatial", "Point3"].concat(),
+        ["Chunk", "Streamer"].concat(),
+        ["Chunk", "StreamingConfig"].concat(),
+        ["Chunk", "StreamingMode"].concat(),
+        ["Chunk", "LoadOrder"].concat(),
+        ["Streaming", "Focus"].concat(),
+        ["Chunk", "SetDiff"].concat(),
+        ["Farthest", "First"].concat(),
     ];
 
     for manifest_path in walk_files(root)?
@@ -425,6 +432,13 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
         "runen-spatial-index",
         "SpatialAabb3",
         "SpatialPoint3",
+        "ChunkStreamer",
+        "ChunkStreamingConfig",
+        "ChunkStreamingMode",
+        "ChunkLoadOrder",
+        "StreamingFocus",
+        "ChunkSetDiff",
+        "FarthestFirst",
     ];
 
     for relative in ACTIVE_DOCS {

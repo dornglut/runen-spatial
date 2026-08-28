@@ -11,7 +11,7 @@ The current workspace provides:
 - namespaced world, chunk, region, hierarchy, clipmap, and ring identities/mapping primitives;
 - checked large-world coordinate, hierarchy, partition, frame, and overflow behavior;
 - deterministic spatial hashing primitives;
-- a deterministic single-focus demand baseline with hysteresis;
+- bounded deterministic world-qualified multi-source demand with source-local hysteresis, pins, ranks, and pressure diagnostics;
 - a budgeted content-agnostic streaming controller with request correlation and backend-event handling;
 - a retained optional, pre-release Godot translation adapter backed by a maintained consumer.
 
@@ -19,7 +19,7 @@ The current workspace provides:
 
 RunenSpatial is public, unpublished, and pre-release. The current API is not a stable persistence or wire-format promise.
 
-Known architectural work remains around retained foundation contracts, multi-source demand, streaming lifecycle decomposition, request identity, bounded long-running state, retained adapter contract hardening, standalone conformance, and the later Runenwerk consumer cutover.
+Known architectural work remains around retained foundation contracts, streaming lifecycle decomposition, request identity, bounded long-running state, retained adapter contract hardening, standalone conformance, and the later Runenwerk consumer cutover.
 
 ## Validation
 
