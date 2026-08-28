@@ -103,10 +103,7 @@ impl ClipmapConfig {
         }
     }
 
-    pub fn cell_edge_meters_for_level(
-        &self,
-        level: ClipmapLevel,
-    ) -> Result<f64, SpatialMathError> {
+    pub fn cell_edge_meters_for_level(&self, level: ClipmapLevel) -> Result<f64, SpatialMathError> {
         self.validate_level(level)?;
         let edge =
             self.base_cell_edge_meters * (self.level_scale_factor as f64).powi(i32::from(level.0));

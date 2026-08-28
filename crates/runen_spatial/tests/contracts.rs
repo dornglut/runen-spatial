@@ -296,9 +296,7 @@ fn hierarchy_child_bounds_cover_each_parent_without_overlap() {
 fn clipmap_and_ring_are_checked_mapping_primitives() {
     let clipmap = ClipmapConfig::try_new(2.0, 2, 2, [3, 3, 3]).unwrap();
     assert_eq!(
-        clipmap
-            .cell_edge_meters_for_level(ClipmapLevel(1))
-            .unwrap(),
+        clipmap.cell_edge_meters_for_level(ClipmapLevel(1)).unwrap(),
         4.0
     );
     assert_eq!(
