@@ -1,0 +1,344 @@
+name: Temporary issue 29 executor
+
+on:
+  push:
+    branches:
+      - refactor/bounded-streaming-working-set-staging
+
+permissions:
+  contents: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: refactor/bounded-streaming-working-set-staging
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Install maintained Rust toolchains
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup toolchain install 1.93.0 --profile minimal --component rustfmt,clippy
+      - name: Complete issue 29 candidate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          controller = Path("crates/runen_spatial_streaming/src/controller.rs")
+          text = controller.read_text()
+          old = 'candidates.sort_by_key(|(rank, chunk_id)| (*rank, *chunk_id));\n        candidates.truncate(limit);'
+          new = 'candidates.sort_by_key(|(chunk_id, rank)| (*rank, *chunk_id));\n        candidates.truncate(limit);'
+          if old not in text:
+              raise SystemExit("unload ordering patch target missing")
+          controller.write_text(text.replace(old, new, 1))
+
+          adapter = Path("adapters/godot_world_streaming/src/world_streaming_node.rs")
+          text = adapter.read_text()
+          old = '''use runen_spatial_streaming::{
+              ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
+              StreamRequestKind, StreamingBudgets, StreamingTick, WorldStreamingConfig,
+              WorldStreamingController, WorldStreamingEvent, WorldStreamingEventKind,
+          };
+          '''
+          new = '''use runen_spatial_streaming::{
+              ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
+              StreamRequestKind, StreamingBudgets, StreamingCapacity, StreamingTick,
+              WorldStreamingConfig, WorldStreamingController, WorldStreamingEvent,
+              WorldStreamingEventKind,
+          };
+
+          const DEFAULT_MAX_TRACKED_RECORDS: usize = 1024;
+          const DEFAULT_MAX_IN_FLIGHT_LOADS: usize = 4;
+          const DEFAULT_MAX_IN_FLIGHT_UNLOADS: usize = 4;
+          '''
+          if old not in text:
+              raise SystemExit("adapter import patch target missing")
+          text = text.replace(old, new, 1)
+
+          old = '''        dict.set(
+              "max_unload_requests_per_tick",
+              self.max_unload_requests_per_tick as i64,
+          );
+              dict
+          '''
+          new = '''        dict.set(
+              "max_unload_requests_per_tick",
+              self.max_unload_requests_per_tick as i64,
+          );
+              let capacity = adapter_streaming_capacity();
+              dict.set("max_tracked_records", capacity.max_tracked_records() as i64);
+              dict.set(
+                  "max_in_flight_loads",
+                  capacity.max_in_flight_loads() as i64,
+              );
+              dict.set(
+                  "max_in_flight_unloads",
+                  capacity.max_in_flight_unloads() as i64,
+              );
+              dict
+          '''
+          if old not in text:
+              raise SystemExit("describe_config patch target missing")
+          text = text.replace(old, new, 1)
+
+          old = '''            WorldStreamingEventKind::LoadQueued
+              | WorldStreamingEventKind::LoadRequested
+              | WorldStreamingEventKind::UnloadQueued
+              | WorldStreamingEventKind::UnloadRequested => {}
+          '''
+          new = '''            WorldStreamingEventKind::LoadRequested
+              | WorldStreamingEventKind::UnloadRequested => {}
+          '''
+          if old not in text:
+              raise SystemExit("adapter event patch target missing")
+          text = text.replace(old, new, 1)
+
+          old = '''        let mut config =
+              WorldStreamingConfig::new(WorldId(self.world_id), partition, DemandLimits::default());
+              config.budgets = self.streaming_budgets();
+          '''
+          new = '''        let mut config = WorldStreamingConfig::new(
+                  WorldId(self.world_id),
+                  partition,
+                  DemandLimits::default(),
+                  adapter_streaming_capacity(),
+              );
+              config.budgets = self.streaming_budgets();
+          '''
+          if old not in text:
+              raise SystemExit("adapter config patch target missing")
+          text = text.replace(old, new, 1)
+
+          marker = 'const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);\n'
+          addition = '''const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
+
+          fn adapter_streaming_capacity() -> StreamingCapacity {
+              StreamingCapacity::new(
+                  DEFAULT_MAX_TRACKED_RECORDS,
+                  DEFAULT_MAX_IN_FLIGHT_LOADS,
+                  DEFAULT_MAX_IN_FLIGHT_UNLOADS,
+              )
+          }
+          '''
+          if marker not in text:
+              raise SystemExit("adapter capacity helper target missing")
+          text = text.replace(marker, addition, 1)
+
+          old = '''        NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
+              request_id_to_i64, requested_radii, requested_region_dims,
+          '''
+          new = '''        NODE_FOCUS_SOURCE, adapter_streaming_capacity, demand_changes_from_node_values,
+              partition_from_node_values, request_id_to_i64, requested_radii, requested_region_dims,
+          '''
+          if old not in text:
+              raise SystemExit("adapter test import target missing")
+          text = text.replace(old, new, 1)
+
+          insert_before = '''    #[test]
+              fn request_id_translation_is_exact_and_fallible() {
+          '''
+          test = '''    #[test]
+              fn adapter_capacity_policy_is_explicit_and_bounded() {
+                  let capacity = adapter_streaming_capacity();
+                  assert_eq!(capacity.max_tracked_records(), 1024);
+                  assert_eq!(capacity.max_in_flight_loads(), 4);
+                  assert_eq!(capacity.max_in_flight_unloads(), 4);
+              }
+
+              #[test]
+              fn request_id_translation_is_exact_and_fallible() {
+          '''
+          if insert_before not in text:
+              raise SystemExit("adapter capacity test target missing")
+          text = text.replace(insert_before, test, 1)
+          adapter.write_text(text)
+
+          Path("README.md").write_text('''# RunenSpatial
+
+          RunenSpatial is Dornglut's host-neutral Rust framework for large-world spatial identity and coordinate mechanics, spatial demand planning, and content-agnostic chunk availability control.
+
+          It is intended to be usable independently of Runenwerk and engine integrations. Product generation, simulation, ECS/gameplay activation, rendering, persistence, networking, filesystem/network IO, and async-runtime policy remain outside this repository.
+
+          ## Current capabilities
+
+          The current workspace provides:
+
+          - namespaced world, chunk, region, hierarchy, clipmap, and ring identities/mapping primitives;
+          - checked large-world coordinate, hierarchy, partition, frame, and overflow behavior;
+          - deterministic spatial hashing primitives;
+          - bounded deterministic world-qualified multi-source demand with source-local hysteresis, pins, ranks, and pressure diagnostics;
+          - a budgeted, bounded content-agnostic streaming controller with orthogonal availability/operation/failure state, exact request correlation, deterministic reversal, bounded runtime admission, independent load/unload provider concurrency, and operational pressure diagnostics;
+          - a retained optional, pre-release Godot translation adapter backed by a maintained consumer.
+
+          ## Maturity
+
+          RunenSpatial is public, unpublished, and pre-release. The current API is not a stable persistence or wire-format promise.
+
+          Known architectural work remains around retained foundation contracts, retained adapter contract hardening, standalone conformance, and the later Runenwerk consumer cutover.
+
+          ## Validation
+
+          ```text
+          cargo validate
+          ```
+
+          See [TESTING.md](TESTING.md) for the mechanical validation contract.
+
+          ## Repository authority
+
+          - [Architecture](ARCHITECTURE.md)
+          - [Roadmap](ROADMAP.md)
+          - [Documentation architecture](docs/documentation-architecture.md)
+          - [Spatial model](docs/spatial-model.md)
+          - [Spatial demand](docs/spatial-demand.md)
+          - [Streaming lifecycle](docs/streaming-lifecycle.md)
+          - [Godot integration](docs/godot-integration.md)
+          - [Transfer provenance](docs/provenance/repository-transfer.md)
+          - [Security policy](SECURITY.md)
+          - [Licensing](LICENSING.md)
+
+          ## Licensing
+
+          Current repository code is licensed under [GPL-3.0-only](LICENSE). A separate commercial license may be available from copyright holder(s) with sufficient rights; see [LICENSING.md](LICENSING.md).
+          '''.replace('          ', ''))
+
+          Path("ROADMAP.md").write_text('''# RunenSpatial Roadmap
+
+          The roadmap owns durable sequencing only. GitHub issues and pull requests own detailed acceptance criteria and live execution state.
+
+          ## 1. Harden retained foundation contracts
+
+          Make retained foundational public values and operations intentional and internally consistent. Resolve opaque-ID representation/default semantics, redundant spatial-hash vocabulary, inconsistent level typing, silent narrowing/saturation, and constructors or `Result` surfaces whose advertised fallibility does not match their implementation.
+
+          Do not add generic geometry/index abstractions without a proven consumer.
+
+          ## 2. Harden retained integration contracts
+
+          Harden the retained `godot_world_streaming` translation boundary against the accepted host-neutral demand and lifecycle contracts. Keep Godot-specific scene, provider, cache, realization, and product policy outside the framework packages, and keep the adapter API pre-release until its translation behavior is independently proven.
+
+          ## 3. Prove standalone conformance
+
+          Exercise the retained public packages through host-neutral public APIs without internal source access. Bind deterministic replay, bounded resource behavior, failure propagation, and package independence before publication is considered.
+
+          ## 4. Cut over Runenwerk separately
+
+          Authorize downstream Runenwerk migration only after standalone conformance. Migrate in dependency order and delete duplicate Runenwerk authority component-by-component. Do not use permanent wrappers, forwarding crates, source mirrors, branch dependencies, or submodules.
+          '''.replace('          ', ''))
+
+          Path("docs/streaming-lifecycle.md").write_text('''# Streaming Availability Lifecycle
+
+          This document explains the responsibility of `runen-spatial-streaming`. Exact public signatures and transition tests are owned by the package source, rustdoc, and tests.
+
+          ## Ownership
+
+          The streaming package coordinates content-agnostic availability work: bounded runtime admission, budgeted load/unload request issuance, provider-concurrency limits, correlation with provider events, deterministic request/event ordering, reversal, blocking failure state, and operational pressure diagnostics.
+
+          The provider owns actual IO and payload/resource creation. The host owns product semantics, payload caches, gameplay/ECS activation, rendering, retry timing/backoff, CPU/frame scheduling, and application degradation policy.
+
+          A provider result is paired to framework work by its nonzero request ID, world-qualified `ChunkId`, and load/unload operation. Payload/resource transfer is not part of the RunenSpatial contract.
+
+          ## Desired intent and runtime records
+
+          `SpatialDemandPlanner` owns the complete bounded effective desired set and its `DemandRank` ordering. Streaming does not copy that set into a second queue.
+
+          A runtime record exists only when state must survive independently of the demand snapshot: observed residency, an issued/provider-started operation, or a blocking failure. A desired absent chunk that has not been admitted needs no runtime record and remains visible through effective demand.
+
+          For tracked chunks, the record keeps current desired intent/rank alongside:
+
+          - observed availability: `Absent` or `Resident`;
+          - current operation: idle, issued load/unload, or provider-started load/unload;
+          - an optional blocking load/unload failure while current availability does not satisfy current intent.
+
+          Pending work is derived rather than stored:
+
+          - desired + absent + idle + no blocking failure is eligible to load;
+          - undesired + resident + idle + no blocking failure is eligible to unload.
+
+          Issued operations own the complete issued request. Request lookup state is only a correlation index and does not duplicate request identity or kind in parallel record fields.
+
+          ## Availability and failure
+
+          Availability changes only on successful provider completion:
+
+          - load request/start leaves availability `Absent`;
+          - successful load completion changes availability to `Resident`;
+          - unload request/start leaves availability `Resident`;
+          - successful unload completion changes availability to `Absent`;
+          - failed load remains `Absent`;
+          - failed unload remains `Resident`.
+
+          A failure is retained only while it blocks convergence to current intent. Intent reversal clears a failure when existing availability already satisfies the new target. Retry is explicit; retry only clears the blocking failure so derived work becomes eligible on a later tick. RunenSpatial does not choose retry timing or backoff.
+
+          ## Bounded operational pressure
+
+          `StreamingCapacity` independently bounds:
+
+          - tracked runtime records;
+          - in-flight load requests;
+          - in-flight unload requests.
+
+          `StreamingBudgets` remain per-tick issuance-rate limits. Capacity and budgets are separate contracts.
+
+          When tracked-record capacity is full, new desired absent chunks remain in effective demand but are not admitted until a record slot becomes available. Existing resident, active-request, and blocking-failure records are never evicted to make room. When a record becomes neutral and is pruned, the highest-ranked still-effective missing demand becomes eligible automatically without source resubmission.
+
+          Load and unload concurrency are bounded independently so saturated load work cannot consume cleanup capacity. Operational pressure is reported through `StreamingPressureDiagnostics`; demand composition pressure remains separately owned by `DemandPressureDiagnostics`.
+
+          ## Reversal
+
+          The provider contract is non-cancelling once a request is issued:
+
+          - if load becomes undesired after issuance, allow it to finish; successful residency then becomes eligible for unload;
+          - if unload becomes desired after issuance, allow it to finish; successful absence then becomes eligible for load from the still-current demand snapshot;
+          - unissued desired work requires no provider or stored queue state, so intent changes cause no provider churn.
+
+          Neutral absent/idle/no-failure records are removed even when their chunk is still desired, because the planner remains the desired-intent authority. Runtime records therefore represent admitted live framework state rather than exploration history or a duplicate demand queue.
+
+          ## Request identity
+
+          Request IDs are opaque, nonzero, monotonically generated identities. They are never silently saturated or reused.
+
+          After budget/capacity selection, a tick reserves the complete request-ID batch before changing any operation into an issued state. If the remaining ID domain cannot satisfy that complete batch, it issues no new requests and reports `request_id_exhausted` in the tick output. Successful demand changes from that tick remain committed and visible.
+
+          ## Excluded policy
+
+          RunenSpatial does not own provider cancellation/timeouts, automatic retry/backoff, payload or cache eviction, IO/task scheduling, CPU/frame budgets, or application degradation policy. Those remain host/provider concerns layered on the bounded lifecycle contract.
+          '''.replace('          ', ''))
+
+          Path("docs/godot-integration.md").write_text('''# Godot Integration
+
+          `adapters/godot_world_streaming` is RunenSpatial's retained optional, non-default, non-publishable pre-release Godot translation integration. Maintained consumer evidence justifies keeping this artifact in the repository.
+
+          It is not framework authority and does not justify Godot dependencies or engine semantics in the host-neutral packages.
+
+          ## Ownership boundary
+
+          RunenSpatial owns the adapter's translation between Godot-facing values and the host-neutral spatial-demand/availability contracts, plus the Godot-visible request/event bridge required to expose those contracts.
+
+          The consuming host owns scenes, providers, payload caches, generation, realization, rendering, physics, persistence, gameplay behavior, CPU/frame scheduling, and other product or engine policy.
+
+          ## Current role
+
+          The adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs through one stable internal demand source, emits framework requests/events through Godot-visible methods and signals, and can rebuild its controller from node configuration.
+
+          Request IDs are translated exactly across the Godot boundary. Inbound IDs must be positive signed 64-bit values. A host-neutral request ID that cannot be represented exactly as Godot `i64` is reported through `streaming_error`; it is never saturated or aliased to another request.
+
+          The current pre-release adapter policy uses a maximum of 1024 tracked runtime records and independent in-flight limits of 4 loads and 4 unloads. These are adapter defaults, not host-neutral core defaults, and `describe_config()` exposes them alongside the existing per-tick request budgets. The tracked-record ceiling accommodates the adapter's current default retain footprint while keeping long-running provider pressure finite.
+
+          Other numeric conversion, configuration-mutation, and controller-reset behavior remains pre-release integration contract work. Harden those surfaces independently against the accepted host-neutral contracts rather than duplicating core semantics in the adapter.
+
+          ## Maturity
+
+          Retention is established; API stability is not. No production-support or stable Godot API promise is made yet.
+          '''.replace('          ', ''))
+          PY
+          cargo +stable fmt --all
+          git rm .github/workflows/issue-29-executor.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Bound streaming working-set admission and provider concurrency (#29)"
+          cargo +stable validate
+          git push origin HEAD:refactor/bounded-streaming-working-set-staging
