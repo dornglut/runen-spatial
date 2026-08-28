@@ -217,7 +217,7 @@ jobs:
                       return source_contribution_count(source_id, previous, self.limits);
                   }
 
-                  let mut candidate = 0_usize;
+                  let mut candidate;
                   if let Some(focus) = snapshot.focus() {
                       let center = self.partition.chunk_coord_from_world_position(focus.position())?;
                       candidate = check_desired_volume(focus, source_id, self.limits)?;
