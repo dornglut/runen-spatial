@@ -152,7 +152,6 @@ impl StreamingPressureDiagnostics {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StreamingTickOutput {
     pub requests: Vec<StreamRequest>,
-    pub events: Vec<WorldStreamingEvent>,
     pub request_id_exhausted: bool,
     pub pressure: StreamingPressureDiagnostics,
 }
@@ -181,10 +180,6 @@ impl ChunkRuntimeRecord {
 
     pub const fn chunk_id(&self) -> ChunkId {
         self.chunk_id
-    }
-
-    pub const fn desired(&self) -> bool {
-        self.desired
     }
 
     pub const fn rank(&self) -> DemandRank {
@@ -284,8 +279,6 @@ impl WorldStreamingController {
         &mut self,
         tick: StreamingTick,
     ) -> Result<StreamingTickOutput, WorldStreamingError> {
-        let mut events = Vec::new();
-
         if !tick.demand_changes.is_empty() {
             let delta = self
                 .planner
@@ -321,7 +314,6 @@ impl WorldStreamingController {
         let Some(request_ids) = self.reserve_request_ids(request_count) else {
             return Ok(StreamingTickOutput {
                 requests: Vec::new(),
-                events,
                 request_id_exhausted: true,
                 pressure: self.pressure_diagnostics(),
             });
@@ -329,22 +321,11 @@ impl WorldStreamingController {
 
         let (load_request_ids, unload_request_ids) = request_ids.split_at(load_candidates.len());
         let mut requests = Vec::with_capacity(request_count);
-        self.issue_load_candidates(
-            &load_candidates,
-            load_request_ids,
-            &mut requests,
-            &mut events,
-        );
-        self.issue_unload_candidates(
-            &unload_candidates,
-            unload_request_ids,
-            &mut requests,
-            &mut events,
-        );
+        self.issue_load_candidates(&load_candidates, load_request_ids, &mut requests);
+        self.issue_unload_candidates(&unload_candidates, unload_request_ids, &mut requests);
 
         Ok(StreamingTickOutput {
             requests,
-            events,
             request_id_exhausted: false,
             pressure: self.pressure_diagnostics(),
         })
@@ -680,7 +661,6 @@ impl WorldStreamingController {
         candidates: &[(ChunkId, DemandRank)],
         request_ids: &[StreamRequestId],
         requests: &mut Vec<StreamRequest>,
-        events: &mut Vec<WorldStreamingEvent>,
     ) {
         debug_assert_eq!(candidates.len(), request_ids.len());
         for (&(chunk_id, rank), &request_id) in candidates.iter().zip(request_ids) {
@@ -703,11 +683,6 @@ impl WorldStreamingController {
             let previous = self.pending_requests.insert(request_id, chunk_id);
             debug_assert!(previous.is_none());
             requests.push(request);
-            events.push(WorldStreamingEvent::new(
-                chunk_id,
-                request_id,
-                WorldStreamingEventKind::LoadRequested,
-            ));
         }
     }
 
@@ -716,7 +691,6 @@ impl WorldStreamingController {
         candidates: &[(ChunkId, DemandRank)],
         request_ids: &[StreamRequestId],
         requests: &mut Vec<StreamRequest>,
-        events: &mut Vec<WorldStreamingEvent>,
     ) {
         debug_assert_eq!(candidates.len(), request_ids.len());
         for (&(chunk_id, rank), &request_id) in candidates.iter().zip(request_ids) {
@@ -735,11 +709,6 @@ impl WorldStreamingController {
             let previous = self.pending_requests.insert(request_id, chunk_id);
             debug_assert!(previous.is_none());
             requests.push(request);
-            events.push(WorldStreamingEvent::new(
-                chunk_id,
-                request_id,
-                WorldStreamingEventKind::UnloadRequested,
-            ));
         }
     }
 
@@ -848,7 +817,6 @@ mod tests {
 
         assert!(output.request_id_exhausted);
         assert!(output.requests.is_empty());
-        assert!(output.events.is_empty());
         assert_eq!(controller.records().count(), 0);
         assert_eq!(controller.pending_requests().count(), 0);
         assert_eq!(controller.effective_demand().len(), 9);
