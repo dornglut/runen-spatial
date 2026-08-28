@@ -3,14 +3,12 @@ use crate::events::{
     ProviderEvent, ProviderEventKind, WorldStreamingEvent, WorldStreamingEventKind,
 };
 use crate::lifecycle::ChunkLifecycleState;
-use crate::priority::{ChunkPriority, distance_squared};
 use crate::request::{StreamRequest, StreamRequestId, StreamRequestKind};
-use runen_spatial::{ChunkCoord3, ChunkId, GridPartitionConfig, SpatialMathError, WorldId};
-use runen_spatial_demand::{ChunkSetDiff, ChunkStreamer, ChunkStreamingConfig, StreamingFocus};
+use runen_spatial::{ChunkId, GridPartitionConfig, WorldId};
+use runen_spatial_demand::{
+    DemandLimits, DemandRank, DemandSourceChange, SpatialDemandDelta, SpatialDemandPlanner,
+};
 use std::collections::BTreeMap;
-
-type RankedChunk = (ChunkCoord3, ChunkPriority);
-type PreparedChunkDiff = (Vec<RankedChunk>, Vec<RankedChunk>);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct StreamingBudgets {
@@ -31,7 +29,7 @@ impl Default for StreamingBudgets {
 pub struct WorldStreamingConfig {
     pub world_id: WorldId,
     pub partition: GridPartitionConfig,
-    pub chunking: ChunkStreamingConfig,
+    pub demand_limits: DemandLimits,
     pub budgets: StreamingBudgets,
 }
 
@@ -39,25 +37,33 @@ impl WorldStreamingConfig {
     pub fn new(
         world_id: WorldId,
         partition: GridPartitionConfig,
-        chunking: ChunkStreamingConfig,
+        demand_limits: DemandLimits,
     ) -> Self {
         Self {
             world_id,
             partition,
-            chunking,
+            demand_limits,
             budgets: StreamingBudgets::default(),
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StreamingTick {
-    pub focus: Option<StreamingFocus>,
+    demand_changes: Vec<DemandSourceChange>,
 }
 
 impl StreamingTick {
-    pub fn from_focus(focus: StreamingFocus) -> Self {
-        Self { focus: Some(focus) }
+    pub const fn without_demand_changes() -> Self {
+        Self {
+            demand_changes: Vec::new(),
+        }
+    }
+
+    pub fn from_demand_changes(changes: impl IntoIterator<Item = DemandSourceChange>) -> Self {
+        Self {
+            demand_changes: changes.into_iter().collect(),
+        }
     }
 }
 
@@ -72,7 +78,7 @@ pub struct ChunkRuntimeRecord {
     pub chunk_id: ChunkId,
     pub state: ChunkLifecycleState,
     pub desired: bool,
-    pub priority: ChunkPriority,
+    pub rank: DemandRank,
     pub active_request_id: Option<StreamRequestId>,
     pub active_request_kind: Option<StreamRequestKind>,
 }
@@ -83,7 +89,7 @@ impl ChunkRuntimeRecord {
             chunk_id,
             state: ChunkLifecycleState::Absent,
             desired: false,
-            priority: ChunkPriority::default(),
+            rank: DemandRank::default(),
             active_request_id: None,
             active_request_kind: None,
         }
@@ -92,7 +98,7 @@ impl ChunkRuntimeRecord {
 
 pub struct WorldStreamingController {
     world_id: WorldId,
-    streamer: ChunkStreamer,
+    planner: SpatialDemandPlanner,
     budgets: StreamingBudgets,
     records: BTreeMap<ChunkId, ChunkRuntimeRecord>,
     pending_requests: BTreeMap<StreamRequestId, StreamRequest>,
@@ -103,7 +109,11 @@ impl WorldStreamingController {
     pub fn new(config: WorldStreamingConfig) -> Self {
         Self {
             world_id: config.world_id,
-            streamer: ChunkStreamer::new(config.partition, config.chunking),
+            planner: SpatialDemandPlanner::new(
+                config.world_id,
+                config.partition,
+                config.demand_limits,
+            ),
             budgets: config.budgets,
             records: BTreeMap::new(),
             pending_requests: BTreeMap::new(),
@@ -123,12 +133,11 @@ impl WorldStreamingController {
         self.budgets = budgets;
     }
 
-    pub fn chunking_config(&self) -> ChunkStreamingConfig {
-        self.streamer.config()
+    pub fn demand_limits(&self) -> DemandLimits {
+        self.planner.limits()
     }
-
-    pub fn set_chunking_config(&mut self, config: ChunkStreamingConfig) {
-        self.streamer.set_config(config);
+    pub fn effective_demand(&self) -> &runen_spatial_demand::EffectiveDemandSnapshot {
+        self.planner.effective_snapshot()
     }
 
     pub fn records(&self) -> impl Iterator<Item = &ChunkRuntimeRecord> {
@@ -149,20 +158,12 @@ impl WorldStreamingController {
     ) -> Result<StreamingTickOutput, WorldStreamingError> {
         let mut events = Vec::new();
 
-        if let Some(focus) = tick.focus {
-            if focus.position().world_id() != self.world_id {
-                return Err(WorldStreamingError::SpatialMath(
-                    runen_spatial::SpatialMathError::WorldMismatch {
-                        expected: self.world_id,
-                        actual: focus.position().world_id(),
-                    },
-                ));
-            }
-            let priorities = self
-                .streamer
-                .update_focus_with(focus, prepare_chunk_diff)
-                .map_err(WorldStreamingError::SpatialMath)?;
-            self.apply_prepared_chunk_diff(priorities, &mut events);
+        if !tick.demand_changes.is_empty() {
+            let delta = self
+                .planner
+                .apply_changes(tick.demand_changes)
+                .map_err(WorldStreamingError::SpatialDemand)?;
+            self.apply_demand_delta(&delta, &mut events);
         }
 
         let mut requests = Vec::new();
@@ -376,26 +377,26 @@ impl WorldStreamingController {
         Ok(event)
     }
 
-    fn apply_prepared_chunk_diff(
+    fn apply_demand_delta(
         &mut self,
-        priorities: PreparedChunkDiff,
+        delta: &SpatialDemandDelta,
         events: &mut Vec<WorldStreamingEvent>,
     ) {
-        for (coord, priority) in priorities.0 {
-            let chunk_id = ChunkId::new(self.world_id, coord);
-            self.mark_desired(chunk_id, priority, events);
+        for chunk in delta.entered() {
+            self.mark_desired(chunk.chunk_id(), chunk.rank(), events);
         }
-
-        for (coord, priority) in priorities.1 {
-            let chunk_id = ChunkId::new(self.world_id, coord);
-            self.mark_undesired(chunk_id, priority, events);
+        for chunk in delta.updated() {
+            self.refresh_priority(chunk.chunk_id(), chunk.rank());
+        }
+        for chunk in delta.exited() {
+            self.mark_undesired(chunk.chunk_id(), chunk.rank(), events);
         }
     }
 
     fn mark_desired(
         &mut self,
         chunk_id: ChunkId,
-        priority: ChunkPriority,
+        rank: DemandRank,
         events: &mut Vec<WorldStreamingEvent>,
     ) {
         let record = self
@@ -403,7 +404,7 @@ impl WorldStreamingController {
             .entry(chunk_id)
             .or_insert_with(|| ChunkRuntimeRecord::new(chunk_id));
         record.desired = true;
-        record.priority = priority;
+        record.rank = rank;
 
         match record.state {
             ChunkLifecycleState::Absent => {
@@ -429,14 +430,14 @@ impl WorldStreamingController {
     fn mark_undesired(
         &mut self,
         chunk_id: ChunkId,
-        priority: ChunkPriority,
+        rank: DemandRank,
         events: &mut Vec<WorldStreamingEvent>,
     ) {
         let Some(record) = self.records.get_mut(&chunk_id) else {
             return;
         };
         record.desired = false;
-        record.priority = priority;
+        record.rank = rank;
 
         match record.state {
             ChunkLifecycleState::LoadQueued | ChunkLifecycleState::Failed => {
@@ -453,6 +454,12 @@ impl WorldStreamingController {
         }
     }
 
+    fn refresh_priority(&mut self, chunk_id: ChunkId, rank: DemandRank) {
+        if let Some(record) = self.records.get_mut(&chunk_id) {
+            record.rank = rank;
+        }
+    }
+
     fn emit_requests_for_state(
         &mut self,
         state: ChunkLifecycleState,
@@ -465,9 +472,9 @@ impl WorldStreamingController {
             .records
             .values()
             .filter(|record| record.state == state)
-            .map(|record| (record.priority, record.chunk_id))
+            .map(|record| (record.rank, record.chunk_id))
             .collect::<Vec<_>>();
-        candidates.sort_by_key(|(priority, chunk_id)| (*priority, *chunk_id));
+        candidates.sort_by_key(|(rank, chunk_id)| (*rank, *chunk_id));
 
         for (_, chunk_id) in candidates.into_iter().take(budget) {
             let request_id = self.next_request_id();
@@ -485,7 +492,7 @@ impl WorldStreamingController {
                 request_id,
                 chunk_id,
                 kind: request_kind,
-                priority: record.priority,
+                rank: record.rank,
             };
             self.pending_requests.insert(request_id, request);
             requests.push(request);
@@ -505,31 +512,4 @@ impl WorldStreamingController {
         self.next_request_id = self.next_request_id.saturating_add(1);
         request_id
     }
-}
-
-fn prepare_chunk_diff(
-    center: ChunkCoord3,
-    diff: &ChunkSetDiff,
-) -> Result<PreparedChunkDiff, SpatialMathError> {
-    let prepare_priorities = |chunks: &[ChunkCoord3]| {
-        chunks
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(rank, coord)| {
-                let rank =
-                    u32::try_from(rank).map_err(|_| SpatialMathError::ArithmeticOverflow {
-                        operation: "streaming priority rank",
-                    })?;
-                Ok((
-                    coord,
-                    ChunkPriority::new(rank, distance_squared(coord, center)?),
-                ))
-            })
-            .collect::<Result<Vec<_>, SpatialMathError>>()
-    };
-    Ok((
-        prepare_priorities(&diff.entered)?,
-        prepare_priorities(&diff.exited)?,
-    ))
 }

@@ -20,9 +20,9 @@ No generic spatial-index package is retained. The inherited provisional index ha
 
 ### `runen-spatial-demand`
 
-Current spatial-demand package. It depends on `runen-spatial` and currently exposes the inherited single-focus/hysteresis planner.
+Spatial-demand package. It depends on `runen-spatial` and owns one world-bound, bounded deterministic multi-source planner with validated horizontal/vertical box demand, source-local hysteresis, explicit pins, effective ranks, pressure, and deterministic deltas.
 
-Demand owns geometry-to-demand calculation and deterministic demand ordering. It does not own loading, IO, payloads, activation, or product purpose.
+Demand does not own loading, IO, payloads, activation, product purpose, host source priority, or engine-specific geometry.
 
 ### `runen-spatial-streaming`
 
