@@ -107,13 +107,12 @@ impl StreamingTick {
 pub struct StreamingPressureDiagnostics {
     tracked_records: usize,
     max_tracked_records: usize,
-    unadmitted_desired_chunks: usize,
+    deferred_loads: usize,
     in_flight_loads: usize,
     max_in_flight_loads: usize,
     in_flight_unloads: usize,
     max_in_flight_unloads: usize,
-    remaining_eligible_loads: usize,
-    remaining_eligible_unloads: usize,
+    remaining_unloads: usize,
 }
 
 impl StreamingPressureDiagnostics {
@@ -125,8 +124,8 @@ impl StreamingPressureDiagnostics {
         self.max_tracked_records
     }
 
-    pub const fn unadmitted_desired_chunks(self) -> usize {
-        self.unadmitted_desired_chunks
+    pub const fn deferred_loads(self) -> usize {
+        self.deferred_loads
     }
 
     pub const fn in_flight_loads(self) -> usize {
@@ -145,12 +144,8 @@ impl StreamingPressureDiagnostics {
         self.max_in_flight_unloads
     }
 
-    pub const fn remaining_eligible_loads(self) -> usize {
-        self.remaining_eligible_loads
-    }
-
-    pub const fn remaining_eligible_unloads(self) -> usize {
-        self.remaining_eligible_unloads
+    pub const fn remaining_unloads(self) -> usize {
+        self.remaining_unloads
     }
 }
 
@@ -173,10 +168,10 @@ pub struct ChunkRuntimeRecord {
 }
 
 impl ChunkRuntimeRecord {
-    fn new(chunk_id: ChunkId, desired: bool, rank: DemandRank) -> Self {
+    fn new_load(chunk_id: ChunkId, rank: DemandRank) -> Self {
         Self {
             chunk_id,
-            desired,
+            desired: true,
             rank,
             availability: ChunkAvailability::Absent,
             operation: ChunkOperation::Idle,
@@ -395,7 +390,7 @@ impl WorldStreamingController {
             ) => {
                 self.records.get_mut(&event.chunk_id).unwrap().operation =
                     ChunkOperation::Loading(request);
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderStarted,
@@ -411,12 +406,12 @@ impl WorldStreamingController {
                 record.availability = ChunkAvailability::Resident;
                 record.operation = ChunkOperation::Idle;
                 record.blocking_failure = None;
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderCompleted,
                 ));
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::Resident,
@@ -431,7 +426,7 @@ impl WorldStreamingController {
                 let record = self.records.get_mut(&event.chunk_id).unwrap();
                 record.operation = ChunkOperation::Idle;
                 record.blocking_failure = record.desired.then_some(StreamRequestKind::Load);
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderFailed,
@@ -444,7 +439,7 @@ impl WorldStreamingController {
             ) => {
                 self.records.get_mut(&event.chunk_id).unwrap().operation =
                     ChunkOperation::Unloading(request);
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderStarted,
@@ -460,12 +455,12 @@ impl WorldStreamingController {
                 record.availability = ChunkAvailability::Absent;
                 record.operation = ChunkOperation::Idle;
                 record.blocking_failure = None;
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderCompleted,
                 ));
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::Unloaded,
@@ -480,7 +475,7 @@ impl WorldStreamingController {
                 let record = self.records.get_mut(&event.chunk_id).unwrap();
                 record.operation = ChunkOperation::Idle;
                 record.blocking_failure = (!record.desired).then_some(StreamRequestKind::Unload);
-                events.push(WorldStreamingEvent::with_request(
+                events.push(WorldStreamingEvent::new(
                     event.chunk_id,
                     event.request_id,
                     WorldStreamingEventKind::ProviderFailed,
@@ -527,16 +522,20 @@ impl WorldStreamingController {
                 Some(StreamRequestKind::Unload),
             ) => {
                 record.blocking_failure = None;
-                Ok(())
             }
-            _ => Err(WorldStreamingError::InvalidBlockingFailureRetry {
-                chunk_id,
-                desired: record.desired,
-                availability: record.availability,
-                operation: record.operation,
-                blocking_failure: record.blocking_failure,
-            }),
+            _ => {
+                return Err(WorldStreamingError::InvalidBlockingFailureRetry {
+                    chunk_id,
+                    desired: record.desired,
+                    availability: record.availability,
+                    operation: record.operation,
+                    blocking_failure: record.blocking_failure,
+                });
+            }
         }
+
+        self.prune_neutral_records();
+        Ok(())
     }
 
     fn apply_demand_delta(&mut self, delta: &SpatialDemandDelta) {
@@ -586,36 +585,32 @@ impl WorldStreamingController {
         } else {
             StreamRequestKind::Unload
         };
-        if record.blocking_failure.is_some_and(|failure| failure != required_kind) {
+        if record
+            .blocking_failure
+            .is_some_and(|failure| failure != required_kind)
+        {
             record.blocking_failure = None;
         }
     }
 
     fn load_candidates(&self, limit: usize) -> Vec<(ChunkId, DemandRank)> {
+        let available_record_slots = self
+            .capacity
+            .max_tracked_records
+            .saturating_sub(self.records.len());
+        let limit = limit.min(available_record_slots);
         if limit == 0 {
             return Vec::new();
         }
 
-        let mut remaining_record_slots = self
-            .capacity
-            .max_tracked_records
-            .saturating_sub(self.records.len());
         let mut candidates = Vec::with_capacity(limit);
         for demanded in self.planner.effective_snapshot().chunks() {
+            if self.records.contains_key(&demanded.chunk_id()) {
+                continue;
+            }
+            candidates.push((demanded.chunk_id(), demanded.rank()));
             if candidates.len() == limit {
                 break;
-            }
-            let chunk_id = demanded.chunk_id();
-            match self.records.get(&chunk_id) {
-                Some(record) if Self::record_is_load_eligible(record) => {
-                    candidates.push((chunk_id, demanded.rank()));
-                }
-                Some(_) => {}
-                None if remaining_record_slots > 0 => {
-                    candidates.push((chunk_id, demanded.rank()));
-                    remaining_record_slots -= 1;
-                }
-                None => {}
             }
         }
         candidates
@@ -628,16 +623,9 @@ impl WorldStreamingController {
             .filter(|record| Self::record_is_unload_eligible(record))
             .map(|record| (record.chunk_id, record.rank))
             .collect::<Vec<_>>();
-        candidates.sort_by_key(|(rank, chunk_id)| (*rank, *chunk_id));
+        candidates.sort_by_key(|(chunk_id, rank)| (*rank, *chunk_id));
         candidates.truncate(limit);
         candidates
-    }
-
-    fn record_is_load_eligible(record: &ChunkRuntimeRecord) -> bool {
-        record.desired
-            && record.availability == ChunkAvailability::Absent
-            && record.operation == ChunkOperation::Idle
-            && record.blocking_failure.is_none()
     }
 
     fn record_is_unload_eligible(record: &ChunkRuntimeRecord) -> bool {
@@ -685,18 +673,15 @@ impl WorldStreamingController {
     ) {
         debug_assert_eq!(candidates.len(), request_ids.len());
         for (&(chunk_id, rank), &request_id) in candidates.iter().zip(request_ids) {
-            if !self.records.contains_key(&chunk_id) {
-                debug_assert!(self.records.len() < self.capacity.max_tracked_records);
-                self.records
-                    .insert(chunk_id, ChunkRuntimeRecord::new(chunk_id, true, rank));
-            }
+            debug_assert!(!self.records.contains_key(&chunk_id));
+            debug_assert!(self.records.len() < self.capacity.max_tracked_records);
+            self.records
+                .insert(chunk_id, ChunkRuntimeRecord::new_load(chunk_id, rank));
+
             let record = self
                 .records
                 .get_mut(&chunk_id)
                 .expect("selected load candidate must have a runtime record");
-            record.desired = true;
-            record.rank = rank;
-            debug_assert!(Self::record_is_load_eligible(record));
             let request = StreamRequest {
                 request_id,
                 chunk_id,
@@ -707,7 +692,7 @@ impl WorldStreamingController {
             let previous = self.pending_requests.insert(request_id, chunk_id);
             debug_assert!(previous.is_none());
             requests.push(request);
-            events.push(WorldStreamingEvent::with_request(
+            events.push(WorldStreamingEvent::new(
                 chunk_id,
                 request_id,
                 WorldStreamingEventKind::LoadRequested,
@@ -739,7 +724,7 @@ impl WorldStreamingController {
             let previous = self.pending_requests.insert(request_id, chunk_id);
             debug_assert!(previous.is_none());
             requests.push(request);
-            events.push(WorldStreamingEvent::with_request(
+            events.push(WorldStreamingEvent::new(
                 chunk_id,
                 request_id,
                 WorldStreamingEventKind::UnloadRequested,
@@ -754,24 +739,14 @@ impl WorldStreamingController {
 
     fn pressure_diagnostics(&self) -> StreamingPressureDiagnostics {
         let (in_flight_loads, in_flight_unloads) = self.in_flight_counts();
-        let unadmitted_desired_chunks = self
+        let deferred_loads = self
             .planner
             .effective_snapshot()
             .chunks()
             .iter()
             .filter(|chunk| !self.records.contains_key(&chunk.chunk_id()))
             .count();
-        let remaining_eligible_loads = self
-            .planner
-            .effective_snapshot()
-            .chunks()
-            .iter()
-            .filter(|chunk| match self.records.get(&chunk.chunk_id()) {
-                Some(record) => Self::record_is_load_eligible(record),
-                None => true,
-            })
-            .count();
-        let remaining_eligible_unloads = self
+        let remaining_unloads = self
             .records
             .values()
             .filter(|record| Self::record_is_unload_eligible(record))
@@ -780,13 +755,12 @@ impl WorldStreamingController {
         StreamingPressureDiagnostics {
             tracked_records: self.records.len(),
             max_tracked_records: self.capacity.max_tracked_records,
-            unadmitted_desired_chunks,
+            deferred_loads,
             in_flight_loads,
             max_in_flight_loads: self.capacity.max_in_flight_loads,
             in_flight_unloads,
             max_in_flight_unloads: self.capacity.max_in_flight_unloads,
-            remaining_eligible_loads,
-            remaining_eligible_unloads,
+            remaining_unloads,
         }
     }
 
