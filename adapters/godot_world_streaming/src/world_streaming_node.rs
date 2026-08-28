@@ -92,8 +92,31 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn set_world_id(&mut self, value: i32) {
-        self.world_id = value.clamp(0, i32::from(u16::MAX)) as u16;
-        self.rebuild_controller();
+        let world_id = match requested_world_id(value) {
+            Ok(world_id) => world_id,
+            Err(error) => {
+                self.report_spatial_error(error);
+                return;
+            }
+        };
+        let config = match streaming_config_from_values(
+            world_id,
+            self.chunk_edge_meters,
+            [self.region_dim_x, self.region_dim_y, self.region_dim_z],
+            self.requested_radii_values(),
+            self.streaming_budgets(),
+        ) {
+            Ok(config) => config,
+            Err(error) => {
+                self.report_demand_error(error);
+                return;
+            }
+        };
+        if !self.controller_rebuild_allowed("set_world_id") {
+            return;
+        }
+        self.world_id = world_id;
+        self.controller = Some(WorldStreamingController::new(config));
     }
 
     #[func]
@@ -103,15 +126,24 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn set_chunk_edge_meters(&mut self, value: f32) {
-        if let Err(error) = partition_from_node_values(
+        let config = match streaming_config_from_values(
+            self.world_id,
             value,
             [self.region_dim_x, self.region_dim_y, self.region_dim_z],
+            self.requested_radii_values(),
+            self.streaming_budgets(),
         ) {
-            self.report_spatial_error(error);
+            Ok(config) => config,
+            Err(error) => {
+                self.report_demand_error(error);
+                return;
+            }
+        };
+        if !self.controller_rebuild_allowed("set_chunk_edge_meters") {
             return;
         }
         self.chunk_edge_meters = value;
-        self.rebuild_controller();
+        self.controller = Some(WorldStreamingController::new(config));
     }
 
     #[func]
@@ -128,12 +160,24 @@ impl GodotWorldStreamingNode {
                 return;
             }
         };
-        if let Err(error) = partition_from_node_values(self.chunk_edge_meters, dims) {
-            self.report_spatial_error(error);
+        let config = match streaming_config_from_values(
+            self.world_id,
+            self.chunk_edge_meters,
+            dims,
+            self.requested_radii_values(),
+            self.streaming_budgets(),
+        ) {
+            Ok(config) => config,
+            Err(error) => {
+                self.report_demand_error(error);
+                return;
+            }
+        };
+        if !self.controller_rebuild_allowed("set_region_chunk_dims") {
             return;
         }
         [self.region_dim_x, self.region_dim_y, self.region_dim_z] = dims;
-        self.rebuild_controller();
+        self.controller = Some(WorldStreamingController::new(config));
     }
 
     #[func]
@@ -144,24 +188,20 @@ impl GodotWorldStreamingNode {
         vertical_load_radius_chunks: i32,
         vertical_unload_radius_chunks: i32,
     ) {
-        let radii = match requested_radii([
+        let requested = [
             load_radius_chunks,
             unload_radius_chunks,
             vertical_load_radius_chunks,
             vertical_unload_radius_chunks,
-        ]) {
-            Ok(radii) => radii,
-            Err(error) => {
-                self.report_demand_error(error);
-                return;
-            }
-        };
-        let _ = radii;
+        ];
+        if let Err(error) = requested_radii(requested) {
+            self.report_demand_error(error);
+            return;
+        }
         self.load_radius_chunks = load_radius_chunks;
         self.unload_radius_chunks = unload_radius_chunks;
         self.vertical_load_radius_chunks = vertical_load_radius_chunks;
         self.vertical_unload_radius_chunks = vertical_unload_radius_chunks;
-        self.rebuild_controller();
     }
 
     #[func]
@@ -170,9 +210,16 @@ impl GodotWorldStreamingNode {
         max_load_requests_per_tick: i32,
         max_unload_requests_per_tick: i32,
     ) {
-        self.max_load_requests_per_tick = max_load_requests_per_tick.max(0) as usize;
-        self.max_unload_requests_per_tick = max_unload_requests_per_tick.max(0) as usize;
-        let budgets = self.streaming_budgets();
+        let budgets =
+            match requested_budgets([max_load_requests_per_tick, max_unload_requests_per_tick]) {
+                Ok(budgets) => budgets,
+                Err(message) => {
+                    self.report_adapter_error(message);
+                    return;
+                }
+            };
+        self.max_load_requests_per_tick = budgets.max_load_requests_per_tick;
+        self.max_unload_requests_per_tick = budgets.max_unload_requests_per_tick;
         if let Some(controller) = &mut self.controller {
             controller.set_budgets(budgets);
         }
@@ -180,6 +227,9 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn reset_streaming_state(&mut self) {
+        if !self.controller_rebuild_allowed("reset_streaming_state") {
+            return;
+        }
         self.rebuild_controller();
     }
 
@@ -198,15 +248,8 @@ impl GodotWorldStreamingNode {
                     return;
                 }
             };
-        let changes = match demand_changes_from_node_values(
-            position,
-            [
-                self.load_radius_chunks,
-                self.unload_radius_chunks,
-                self.vertical_load_radius_chunks,
-                self.vertical_unload_radius_chunks,
-            ],
-        ) {
+        let changes = match demand_changes_from_node_values(position, self.requested_radii_values())
+        {
             Ok(transaction) => transaction,
             Err(error) => {
                 self.report_demand_error(error);
@@ -406,25 +449,39 @@ impl GodotWorldStreamingNode {
     }
 
     fn streaming_config(&self) -> Result<WorldStreamingConfig, SpatialDemandError> {
-        let partition = partition_from_node_values(
+        streaming_config_from_values(
+            self.world_id,
             self.chunk_edge_meters,
             [self.region_dim_x, self.region_dim_y, self.region_dim_z],
-        )?;
+            self.requested_radii_values(),
+            self.streaming_budgets(),
+        )
+    }
 
-        requested_radii([
+    fn requested_radii_values(&self) -> [i32; 4] {
+        [
             self.load_radius_chunks,
             self.unload_radius_chunks,
             self.vertical_load_radius_chunks,
             self.vertical_unload_radius_chunks,
-        ])?;
-        let mut config = WorldStreamingConfig::new(
-            WorldId(self.world_id),
-            partition,
-            DemandLimits::default(),
-            ADAPTER_STREAMING_CAPACITY,
-        );
-        config.budgets = self.streaming_budgets();
-        Ok(config)
+        ]
+    }
+
+    fn controller_rebuild_allowed(&mut self, operation: &str) -> bool {
+        if controller_has_runtime_records(self.controller.as_ref()) {
+            let message = format!(
+                "{operation} requires empty streaming runtime state; complete or unload tracked chunks before rebuilding"
+            );
+            let message = GString::from(message.as_str());
+            self.signals().streaming_error().emit(&message);
+            return false;
+        }
+        true
+    }
+
+    fn report_adapter_error(&mut self, message: &str) {
+        let message = GString::from(message);
+        self.signals().streaming_error().emit(&message);
     }
 
     fn report_spatial_error(&mut self, error: SpatialMathError) {
@@ -464,6 +521,12 @@ impl GodotWorldStreamingNode {
             })
             .unwrap_or(0)
     }
+}
+
+fn requested_world_id(value: i32) -> Result<u16, SpatialMathError> {
+    u16::try_from(value).map_err(|_| SpatialMathError::CoordinateOutOfRange {
+        operation: "Godot world_id",
+    })
 }
 
 fn requested_region_dims(requested: [i32; 3]) -> Result<[u32; 3], SpatialMathError> {
@@ -536,6 +599,40 @@ fn requested_radii(requested: [i32; 4]) -> Result<[u32; 4], SpatialDemandError> 
     Ok(radii)
 }
 
+fn requested_budgets(requested: [i32; 2]) -> Result<StreamingBudgets, &'static str> {
+    let max_load_requests_per_tick = usize::try_from(requested[0])
+        .map_err(|_| "max_load_requests_per_tick must be non-negative")?;
+    let max_unload_requests_per_tick = usize::try_from(requested[1])
+        .map_err(|_| "max_unload_requests_per_tick must be non-negative")?;
+    Ok(StreamingBudgets {
+        max_load_requests_per_tick,
+        max_unload_requests_per_tick,
+    })
+}
+
+fn streaming_config_from_values(
+    world_id: u16,
+    chunk_edge_meters: f32,
+    region_chunk_dims: [u32; 3],
+    radii: [i32; 4],
+    budgets: StreamingBudgets,
+) -> Result<WorldStreamingConfig, SpatialDemandError> {
+    let partition = partition_from_node_values(chunk_edge_meters, region_chunk_dims)?;
+    requested_radii(radii)?;
+    let mut config = WorldStreamingConfig::new(
+        WorldId(world_id),
+        partition,
+        DemandLimits::default(),
+        ADAPTER_STREAMING_CAPACITY,
+    );
+    config.budgets = budgets;
+    Ok(config)
+}
+
+fn controller_has_runtime_records(controller: Option<&WorldStreamingController>) -> bool {
+    controller.is_some_and(|controller| controller.records().next().is_some())
+}
+
 fn demand_changes_from_node_values(
     position: WorldPosition,
     requested: [i32; 4],
@@ -561,12 +658,33 @@ fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ADAPTER_STREAMING_CAPACITY, NODE_FOCUS_SOURCE, demand_changes_from_node_values,
-        partition_from_node_values, request_id_to_i64, requested_radii, requested_region_dims,
+        ADAPTER_STREAMING_CAPACITY, NODE_FOCUS_SOURCE, controller_has_runtime_records,
+        demand_changes_from_node_values, partition_from_node_values, request_id_to_i64,
+        requested_budgets, requested_radii, requested_region_dims, requested_world_id,
     };
-    use runen_spatial::{SpatialMathError, WorldId, WorldPosition};
-    use runen_spatial_demand::{DemandAxis, DemandSourceChange, SpatialDemandError};
-    use runen_spatial_streaming::StreamRequestId;
+    use runen_spatial::{GridPartitionConfig, SpatialMathError, WorldId, WorldPosition};
+    use runen_spatial_demand::{
+        DemandAxis, DemandFocus, DemandLimits, DemandSourceChange, DemandSourceId,
+        DemandSourceSnapshot, SpatialDemandError,
+    };
+    use runen_spatial_streaming::{
+        ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId, StreamingBudgets,
+        StreamingCapacity, StreamingTick, WorldStreamingConfig, WorldStreamingController,
+    };
+
+    #[test]
+    fn world_id_rejects_out_of_range_values_without_repair() {
+        assert_eq!(requested_world_id(0), Ok(0));
+        assert_eq!(requested_world_id(i32::from(u16::MAX)), Ok(u16::MAX));
+        for value in [-1, i32::from(u16::MAX) + 1, i32::MAX] {
+            assert_eq!(
+                requested_world_id(value),
+                Err(SpatialMathError::CoordinateOutOfRange {
+                    operation: "Godot world_id"
+                })
+            );
+        }
+    }
 
     #[test]
     fn partition_values_reject_invalid_edges_without_repairing_them() {
@@ -627,6 +745,25 @@ mod tests {
     }
 
     #[test]
+    fn request_budgets_reject_negative_values_and_preserve_zero() {
+        assert_eq!(
+            requested_budgets([0, 3]),
+            Ok(StreamingBudgets {
+                max_load_requests_per_tick: 0,
+                max_unload_requests_per_tick: 3,
+            })
+        );
+        assert_eq!(
+            requested_budgets([-1, 3]),
+            Err("max_load_requests_per_tick must be non-negative")
+        );
+        assert_eq!(
+            requested_budgets([3, -1]),
+            Err("max_unload_requests_per_tick must be non-negative")
+        );
+    }
+
+    #[test]
     fn adapter_transaction_is_a_complete_stable_source_replacement() {
         let position = WorldPosition::try_new(WorldId(23), [12.0, 0.0, -4.0]).unwrap();
         let changes = demand_changes_from_node_values(position, [2, 3, 4, 5]).unwrap();
@@ -658,6 +795,65 @@ mod tests {
     }
 
     #[test]
+    fn structural_rebuild_gate_blocks_every_runtime_record_kind() {
+        let (active, request) = controller_with_load_request(StreamingCapacity::new(8, 1, 1));
+        assert!(controller_has_runtime_records(Some(&active)));
+
+        let (mut resident, resident_request) =
+            controller_with_load_request(StreamingCapacity::new(8, 1, 1));
+        resident
+            .accept_provider_event(provider_event(
+                resident_request,
+                ProviderEventKind::Completed,
+            ))
+            .unwrap();
+        assert!(controller_has_runtime_records(Some(&resident)));
+
+        let (mut failed, failed_request) =
+            controller_with_load_request(StreamingCapacity::new(8, 1, 1));
+        failed
+            .accept_provider_event(provider_event(failed_request, ProviderEventKind::Failed))
+            .unwrap();
+        assert!(controller_has_runtime_records(Some(&failed)));
+
+        assert_eq!(active.pending_requests().count(), 1);
+        assert_eq!(
+            request.kind,
+            runen_spatial_streaming::StreamRequestKind::Load
+        );
+    }
+
+    #[test]
+    fn planner_only_demand_does_not_block_structural_rebuild() {
+        let capacity = StreamingCapacity::new(0, 0, 0);
+        let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
+        let config =
+            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
+        let mut controller = WorldStreamingController::new(config);
+        let focus = DemandFocus::try_new(
+            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            0,
+            0,
+            0,
+            0,
+        )
+        .unwrap();
+        let snapshot = DemandSourceSnapshot::try_new(Some(focus), []).unwrap();
+        let output = controller
+            .tick(StreamingTick::from_demand_changes([
+                DemandSourceChange::Replace {
+                    source_id: DemandSourceId::new(0),
+                    snapshot,
+                },
+            ]))
+            .unwrap();
+
+        assert!(output.requests.is_empty());
+        assert_eq!(controller.effective_demand().len(), 1);
+        assert!(!controller_has_runtime_records(Some(&controller)));
+    }
+
+    #[test]
     fn request_id_translation_is_exact_and_fallible() {
         let godot_max = u64::try_from(i64::MAX).unwrap();
         let maximum = StreamRequestId::try_new(godot_max).unwrap();
@@ -665,5 +861,45 @@ mod tests {
 
         let too_large = StreamRequestId::try_new(godot_max + 1).unwrap();
         assert_eq!(request_id_to_i64(too_large), None);
+    }
+
+    fn controller_with_load_request(
+        capacity: StreamingCapacity,
+    ) -> (WorldStreamingController, StreamRequest) {
+        let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
+        let mut config =
+            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
+        config.budgets = StreamingBudgets {
+            max_load_requests_per_tick: 1,
+            max_unload_requests_per_tick: 1,
+        };
+        let mut controller = WorldStreamingController::new(config);
+        let focus = DemandFocus::try_new(
+            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            0,
+            0,
+            0,
+            0,
+        )
+        .unwrap();
+        let snapshot = DemandSourceSnapshot::try_new(Some(focus), []).unwrap();
+        let request = controller
+            .tick(StreamingTick::from_demand_changes([
+                DemandSourceChange::Replace {
+                    source_id: DemandSourceId::new(0),
+                    snapshot,
+                },
+            ]))
+            .unwrap()
+            .requests[0];
+        (controller, request)
+    }
+
+    fn provider_event(request: StreamRequest, kind: ProviderEventKind) -> ProviderEvent {
+        ProviderEvent {
+            request_id: request.request_id,
+            chunk_id: request.chunk_id,
+            kind,
+        }
     }
 }
