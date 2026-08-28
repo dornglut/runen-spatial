@@ -2,13 +2,13 @@
 
 The roadmap owns durable sequencing only. GitHub issues and pull requests own detailed acceptance criteria and live execution state.
 
-## 1. Harden foundation invariants
+## 1. Harden retained foundation contracts
 
-Make foundational public values valid by construction or explicitly checked. Resolve opaque-ID representation, bounds validity, redundant hash vocabulary, and any remaining silent narrowing/saturation or impossible fallible constructors.
+Make retained foundational public values and operations intentional and internally consistent. Resolve opaque-ID representation/default semantics, redundant spatial-hash vocabulary, inconsistent level typing, silent narrowing/saturation, and constructors or `Result` surfaces whose advertised fallibility does not match their implementation.
 
-## 2. Prune provisional package and integration surfaces
+Do not add generic geometry/index abstractions without a proven consumer.
 
-Audit the spatial-index package against real consumer and complexity requirements. Remove it if no durable independent boundary is proven.
+## 2. Decide integration-surface ownership
 
 Decide the permanent disposition of the framework-local Godot adapter and demo from maintained-consumer evidence. Engine-specific integration must not survive here solely because it was inherited.
 

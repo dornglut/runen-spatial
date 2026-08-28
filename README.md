@@ -13,14 +13,13 @@ The current workspace provides:
 - deterministic spatial hashing primitives;
 - a deterministic single-focus demand baseline with hysteresis;
 - a budgeted content-agnostic streaming controller with request correlation and backend-event handling;
-- a provisional spatial-index package pending a durable-boundary decision;
 - an optional experimental Godot adapter and a repository demo.
 
 ## Maturity
 
 RunenSpatial is public, unpublished, and pre-release. The current API is not a stable persistence or wire-format promise.
 
-Known architectural work remains around foundation invariants, provisional package/adapter disposition, multi-source demand, streaming lifecycle decomposition, request identity, bounded long-running state, standalone conformance, and the later Runenwerk consumer cutover.
+Known architectural work remains around retained foundation contracts, adapter/demo disposition, multi-source demand, streaming lifecycle decomposition, request identity, bounded long-running state, standalone conformance, and the later Runenwerk consumer cutover.
 
 ## Validation
 

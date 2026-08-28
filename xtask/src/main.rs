@@ -110,6 +110,8 @@ fn validate_required_and_retired_paths(root: &Path) -> Result<(), String> {
         "docs/roadmap.md",
         "docs/runenwerk-integration.md",
         "docs/tooling/validation.md",
+        "crates/runen_spatial_index",
+        "crates/runen_spatial/src/bounds.rs",
         "crates/world_core_prelude",
     ];
 
@@ -134,7 +136,6 @@ fn validate_manifest_inventory(root: &Path) -> Result<(), String> {
         "adapters/godot_world_streaming/Cargo.toml".to_owned(),
         "crates/runen_spatial/Cargo.toml".to_owned(),
         "crates/runen_spatial_demand/Cargo.toml".to_owned(),
-        "crates/runen_spatial_index/Cargo.toml".to_owned(),
         "crates/runen_spatial_streaming/Cargo.toml".to_owned(),
         "demos/chunk_streaming_demo/Cargo.toml".to_owned(),
         "xtask/Cargo.toml".to_owned(),
@@ -171,7 +172,6 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
 
     for relative in [
         "crates/runen_spatial/Cargo.toml",
-        "crates/runen_spatial_index/Cargo.toml",
         "crates/runen_spatial_demand/Cargo.toml",
         "crates/runen_spatial_streaming/Cargo.toml",
         "demos/chunk_streaming_demo/Cargo.toml",
@@ -214,6 +214,11 @@ fn validate_manifest_policy(root: &Path) -> Result<(), String> {
         require_contains("xtask/Cargo.toml", &xtask, required)?;
     }
 
+    let lockfile = read_text(root, "Cargo.lock")?;
+    if lockfile.contains("name = \"runen-spatial-index\"") {
+        return Err("Cargo.lock contains retired runen-spatial-index package".to_owned());
+    }
+
     Ok(())
 }
 
@@ -225,6 +230,8 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
         ["build_camera", "_relative_frame"].concat(),
         ["fixed", "_point_scale"].concat(),
         ["quantization", "_scale"].concat(),
+        ["Spatial", "Aabb3"].concat(),
+        ["Spatial", "Point3"].concat(),
     ];
 
     for manifest_path in walk_files(root)?
@@ -246,6 +253,9 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
             }
         }
 
+        if manifest.contains("runen-spatial-index") {
+            return Err(format!("retired spatial-index package in {relative}"));
+        }
         if manifest.contains("world_core_prelude") {
             return Err(format!("retired broad prelude package in {relative}"));
         }
@@ -268,6 +278,10 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
                     "retired foundational API in {relative}: {retired_name}"
                 ));
             }
+        }
+
+        if source.contains("runen_spatial_index") {
+            return Err(format!("retired spatial-index crate import in {relative}"));
         }
 
         for package in RETIRED_PACKAGES {
@@ -409,6 +423,9 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
         "Accepted base: `",
         "Current PR:",
         "CI run ",
+        "runen-spatial-index",
+        "SpatialAabb3",
+        "SpatialPoint3",
     ];
 
     for relative in ACTIVE_DOCS {
