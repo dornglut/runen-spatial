@@ -620,7 +620,7 @@ fn streaming_config_from_values(
     let partition = partition_from_node_values(chunk_edge_meters, region_chunk_dims)?;
     requested_radii(radii)?;
     let mut config = WorldStreamingConfig::new(
-        WorldId(world_id),
+        WorldId::new(world_id),
         partition,
         DemandLimits::default(),
         ADAPTER_STREAMING_CAPACITY,
@@ -765,7 +765,7 @@ mod tests {
 
     #[test]
     fn adapter_transaction_is_a_complete_stable_source_replacement() {
-        let position = WorldPosition::try_new(WorldId(23), [12.0, 0.0, -4.0]).unwrap();
+        let position = WorldPosition::try_new(WorldId::new(23), [12.0, 0.0, -4.0]).unwrap();
         let changes = demand_changes_from_node_values(position, [2, 3, 4, 5]).unwrap();
         let changes = changes.iter().collect::<Vec<_>>();
         assert_eq!(changes.len(), 1);
@@ -827,11 +827,15 @@ mod tests {
     fn planner_only_demand_does_not_block_structural_rebuild() {
         let capacity = StreamingCapacity::new(0, 0, 0);
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
-        let config =
-            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
+        let config = WorldStreamingConfig::new(
+            WorldId::new(7),
+            partition,
+            DemandLimits::default(),
+            capacity,
+        );
         let mut controller = WorldStreamingController::new(config);
         let focus = DemandFocus::try_new(
-            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            WorldPosition::try_new(WorldId::new(7), [0.0, 0.0, 0.0]).unwrap(),
             0,
             0,
             0,
@@ -867,15 +871,19 @@ mod tests {
         capacity: StreamingCapacity,
     ) -> (WorldStreamingController, StreamRequest) {
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
-        let mut config =
-            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
+        let mut config = WorldStreamingConfig::new(
+            WorldId::new(7),
+            partition,
+            DemandLimits::default(),
+            capacity,
+        );
         config.budgets = StreamingBudgets {
             max_load_requests_per_tick: 1,
             max_unload_requests_per_tick: 1,
         };
         let mut controller = WorldStreamingController::new(config);
         let focus = DemandFocus::try_new(
-            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            WorldPosition::try_new(WorldId::new(7), [0.0, 0.0, 0.0]).unwrap(),
             0,
             0,
             0,

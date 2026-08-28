@@ -57,31 +57,32 @@ where
 #[test]
 fn positions_and_frames_are_finite_namespaced_and_translation_only() {
     assert!(matches!(
-        WorldPosition::try_new(WorldId(1), [f64::NAN, 0.0, 0.0]),
+        WorldPosition::try_new(WorldId::new(1), [f64::NAN, 0.0, 0.0]),
         Err(SpatialMathError::NonFiniteValue { .. })
     ));
     assert!(matches!(
         FrameLocalPosition::try_new([f32::INFINITY, 0.0, 0.0]),
         Err(SpatialMathError::NonFiniteValue { .. })
     ));
-    let origin = WorldPosition::try_new(WorldId(1), [10.0, -2.0, 3.0]).unwrap();
+    let origin = WorldPosition::try_new(WorldId::new(1), [10.0, -2.0, 3.0]).unwrap();
     let frame = WorldFrame::new(origin);
-    let global = WorldPosition::try_new(WorldId(1), [12.5, 1.0, 3.0]).unwrap();
+    let global = WorldPosition::try_new(WorldId::new(1), [12.5, 1.0, 3.0]).unwrap();
     let local = frame.to_local(global).unwrap();
     assert_eq!(local.meters(), [2.5, 3.0, 0.0]);
     assert_eq!(frame.to_global(local).unwrap(), global);
     assert!(matches!(
-        frame.to_local(WorldPosition::try_new(WorldId(2), [0.0; 3]).unwrap()),
+        frame.to_local(WorldPosition::try_new(WorldId::new(2), [0.0; 3]).unwrap()),
         Err(SpatialMathError::WorldMismatch { .. })
     ));
     assert!(matches!(
         frame.to_local(
-            WorldPosition::try_new(WorldId(1), [f64::from(f32::MAX) * 2.0, 0.0, 0.0]).unwrap()
+            WorldPosition::try_new(WorldId::new(1), [f64::from(f32::MAX) * 2.0, 0.0, 0.0]).unwrap()
         ),
         Err(SpatialMathError::LocalPositionOutOfRange { .. })
     ));
 
-    let precise_global = WorldPosition::try_new(WorldId(1), [10.1, -1.7, 3.333_333_3]).unwrap();
+    let precise_global =
+        WorldPosition::try_new(WorldId::new(1), [10.1, -1.7, 3.333_333_3]).unwrap();
     let precise_local = frame.to_local(precise_global).unwrap();
     let round_trip = frame.to_global(precise_local).unwrap();
     for axis in 0..3 {
@@ -112,7 +113,7 @@ fn chunk_origin_preserves_the_stable_coordinate_or_rejects_precision_loss() {
                 y: coordinate,
                 z: coordinate,
             };
-            match partition.chunk_origin_world_position(WorldId(3), chunk) {
+            match partition.chunk_origin_world_position(WorldId::new(3), chunk) {
                 Ok(position) => assert_eq!(
                     partition.chunk_coord_from_world_position(position).unwrap(),
                     chunk
@@ -131,7 +132,7 @@ fn chunk_origin_preserves_the_stable_coordinate_or_rejects_precision_loss() {
 #[test]
 fn partition_uses_checked_floor_conversion_and_negative_division() {
     let partition = GridPartitionConfig::try_new(10.0, [8, 8, 8]).unwrap();
-    let position = WorldPosition::try_new(WorldId(3), [-0.001, 9.999, 10.0]).unwrap();
+    let position = WorldPosition::try_new(WorldId::new(3), [-0.001, 9.999, 10.0]).unwrap();
     assert_eq!(
         partition.chunk_coord_from_world_position(position).unwrap(),
         ChunkCoord3 { x: -1, y: 0, z: 1 }
@@ -143,11 +144,11 @@ fn partition_uses_checked_floor_conversion_and_negative_division() {
     };
     let region = partition.region_coord_from_chunk_coord(chunk);
     assert_eq!(region.z, -2);
-    let region_id = partition.region_id_from_chunk_id(ChunkId::new(WorldId(3), chunk));
-    assert_eq!(region_id.world_id, WorldId(3));
+    let region_id = partition.region_id_from_chunk_id(ChunkId::new(WorldId::new(3), chunk));
+    assert_eq!(region_id.world_id, WorldId::new(3));
     assert_eq!(region_id.coord, region);
     let lower =
-        WorldPosition::try_new(WorldId(3), [-9_223_372_036_854_775_808.0, 0.0, 0.0]).unwrap();
+        WorldPosition::try_new(WorldId::new(3), [-9_223_372_036_854_775_808.0, 0.0, 0.0]).unwrap();
     assert_eq!(
         GridPartitionConfig::try_new(1.0, [1, 1, 1])
             .unwrap()
@@ -157,7 +158,7 @@ fn partition_uses_checked_floor_conversion_and_negative_division() {
         i64::MIN
     );
     let upper =
-        WorldPosition::try_new(WorldId(3), [9_223_372_036_854_775_808.0, 0.0, 0.0]).unwrap();
+        WorldPosition::try_new(WorldId::new(3), [9_223_372_036_854_775_808.0, 0.0, 0.0]).unwrap();
     assert!(matches!(
         GridPartitionConfig::try_new(1.0, [1, 1, 1])
             .unwrap()
@@ -216,7 +217,7 @@ fn hierarchy_is_finest_to_coarsest_with_checked_bounds() {
         ))
     );
     assert_eq!(
-        HierarchicalChunkId::new(WorldId(1), GridLevel(2), ChunkCoord3::default())
+        HierarchicalChunkId::new(WorldId::new(1), GridLevel(2), ChunkCoord3::default())
             .parent(&config)
             .unwrap(),
         None
@@ -308,7 +309,7 @@ fn clipmap_and_ring_are_checked_mapping_primitives() {
             level_count: 2,
         }
     );
-    let position = WorldPosition::try_new(WorldId(1), [-0.1, 0.0, 0.0]).unwrap();
+    let position = WorldPosition::try_new(WorldId::new(1), [-0.1, 0.0, 0.0]).unwrap();
     assert_eq!(
         clipmap_coord_from_world_position(&clipmap, ClipmapLevel(0), position)
             .unwrap()

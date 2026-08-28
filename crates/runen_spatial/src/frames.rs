@@ -5,12 +5,6 @@ pub struct WorldFrame {
     origin: WorldPosition,
 }
 
-impl Default for WorldFrame {
-    fn default() -> Self {
-        Self::new(WorldPosition::try_new(crate::WorldId(0), [0.0; 3]).expect("valid default"))
-    }
-}
-
 impl WorldFrame {
     pub fn new(origin: WorldPosition) -> Self {
         Self { origin }

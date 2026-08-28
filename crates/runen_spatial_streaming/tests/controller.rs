@@ -26,8 +26,12 @@ fn controller_with_capacity(
     unload_budget: usize,
     capacity: StreamingCapacity,
 ) -> WorldStreamingController {
-    let mut config =
-        WorldStreamingConfig::new(WorldId(7), partition(), DemandLimits::default(), capacity);
+    let mut config = WorldStreamingConfig::new(
+        WorldId::new(7),
+        partition(),
+        DemandLimits::default(),
+        capacity,
+    );
     config.budgets = StreamingBudgets {
         max_load_requests_per_tick: load_budget,
         max_unload_requests_per_tick: unload_budget,
@@ -45,7 +49,7 @@ fn single_focus(x: f64, y: f64, z: f64) -> StreamingTick {
 
 fn focus_with_radius(x: f64, y: f64, z: f64, radius: u32) -> StreamingTick {
     let focus = DemandFocus::try_new(
-        WorldPosition::try_new(WorldId(7), [x, y, z]).unwrap(),
+        WorldPosition::try_new(WorldId::new(7), [x, y, z]).unwrap(),
         radius,
         radius,
         0,
@@ -61,7 +65,7 @@ fn focus_with_radius(x: f64, y: f64, z: f64, radius: u32) -> StreamingTick {
 
 fn source_focus(source_id: u64, x: f64) -> DemandSourceChange {
     let focus = DemandFocus::try_new(
-        WorldPosition::try_new(WorldId(7), [x, 0.0, 0.0]).unwrap(),
+        WorldPosition::try_new(WorldId::new(7), [x, 0.0, 0.0]).unwrap(),
         0,
         0,
         0,
@@ -411,7 +415,7 @@ fn lifecycle_event_order_is_deterministic_for_identical_reversal_completion() {
 fn stale_and_mismatched_provider_events_are_rejected() {
     let mut controller = single_chunk_controller();
     let request = load_single_chunk(&mut controller);
-    let other_chunk = ChunkId::new(WorldId(7), ChunkCoord3 { x: 99, y: 0, z: 0 });
+    let other_chunk = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 99, y: 0, z: 0 });
     let mismatch = controller
         .accept_provider_event(ProviderEvent {
             request_id: request.request_id,
@@ -450,7 +454,7 @@ fn invalid_demand_transaction_leaves_controller_state_unchanged() {
     let pending_before = controller.pending_requests().copied().collect::<Vec<_>>();
 
     let focus = DemandFocus::try_new(
-        WorldPosition::try_new(WorldId(8), [0.0, 0.0, 0.0]).unwrap(),
+        WorldPosition::try_new(WorldId::new(8), [0.0, 0.0, 0.0]).unwrap(),
         0,
         0,
         0,
@@ -492,7 +496,7 @@ fn planner_rank_remains_the_unissued_load_order_authority() {
     controller
         .tick(focus_with_radius(16.0, 0.0, 0.0, 1))
         .unwrap();
-    let center_after_move = ChunkId::new(WorldId(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
+    let center_after_move = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
     assert_eq!(
         controller.effective_demand().chunks()[0].chunk_id(),
         center_after_move
@@ -538,7 +542,7 @@ fn overlapping_source_removal_preserves_in_flight_request() {
 fn effective_demand_pressure_changes_intent_without_materializing_unissued_records() {
     let limits = DemandLimits::try_new(2, 1, 2, 1).unwrap();
     let capacity = StreamingCapacity::new(4, 1, 1);
-    let mut config = WorldStreamingConfig::new(WorldId(7), partition(), limits, capacity);
+    let mut config = WorldStreamingConfig::new(WorldId::new(7), partition(), limits, capacity);
     config.budgets = StreamingBudgets {
         max_load_requests_per_tick: 0,
         max_unload_requests_per_tick: 0,
@@ -550,8 +554,8 @@ fn effective_demand_pressure_changes_intent_without_materializing_unissued_recor
             source_focus(1, 0.0),
         ]))
         .unwrap();
-    let first = ChunkId::new(WorldId(7), ChunkCoord3 { x: 0, y: 0, z: 0 });
-    let second = ChunkId::new(WorldId(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
+    let first = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 0, y: 0, z: 0 });
+    let second = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
     assert_eq!(controller.effective_demand().chunks()[0].chunk_id(), first);
     assert_eq!(controller.records().count(), 0);
 
@@ -632,7 +636,7 @@ fn tracked_record_capacity_defers_new_loads_without_losing_demand() {
     assert_eq!(resumed.requests[0].kind, StreamRequestKind::Load);
     assert_eq!(
         resumed.requests[0].chunk_id,
-        ChunkId::new(WorldId(7), ChunkCoord3 { x: 12, y: 0, z: 0 })
+        ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 12, y: 0, z: 0 })
     );
 }
 

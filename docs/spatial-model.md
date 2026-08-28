@@ -4,7 +4,7 @@ This document explains the foundational spatial concepts implemented by `runen-s
 
 ## Namespace and identity
 
-`WorldId` qualifies stable runtime spatial identities. Chunk, region, hierarchical, and clipmap identities must not silently cross world namespaces.
+`WorldId` qualifies stable runtime spatial identities. It is constructed explicitly; zero is a valid namespace value but is not an implicit default namespace. World-qualified chunk, region, hierarchical, and clipmap identities likewise require an explicit world identity.
 
 Chunk, region, and clipmap coordinates use signed 64-bit components. They are practical large-world addresses, not mathematical infinity; operations that can overflow must report failure instead of wrapping or saturating spatial identity.
 
@@ -12,7 +12,7 @@ Chunk, region, and clipmap coordinates use signed 64-bit components. They are pr
 
 `WorldPosition` is a validated world-qualified global metric position using finite `f64` components.
 
-`FrameLocalPosition` is a validated finite `f32` position meaningful only relative to a `WorldFrame`. `WorldFrame` is translation-only. The host chooses frames/rebases and owns the consequences for rendering, physics, ECS state, or other systems.
+`FrameLocalPosition` is a validated finite `f32` position meaningful only relative to a `WorldFrame`. `WorldFrame` is translation-only and is constructed from an explicit world-qualified origin. The host chooses frames/rebases and owns the consequences for rendering, physics, ECS state, or other systems.
 
 RunenSpatial does not own a camera-relative frame, render origin, rebase scheduler, or movement event system.
 

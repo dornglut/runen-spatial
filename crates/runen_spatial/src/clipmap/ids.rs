@@ -3,9 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::WorldId;
 use crate::clipmap::{ClipmapCoord3, ClipmapLevel};
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ClipmapCellId {
     pub world_id: WorldId,
     pub level: ClipmapLevel,

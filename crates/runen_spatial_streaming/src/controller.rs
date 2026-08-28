@@ -765,8 +765,12 @@ mod tests {
     fn controller() -> WorldStreamingController {
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
         let capacity = StreamingCapacity::new(8, 2, 2);
-        let config =
-            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
+        let config = WorldStreamingConfig::new(
+            WorldId::new(7),
+            partition,
+            DemandLimits::default(),
+            capacity,
+        );
         WorldStreamingController::new(config)
     }
 
@@ -795,7 +799,7 @@ mod tests {
         let mut controller = controller();
         controller.next_request_id = StreamRequestId::try_new(u64::MAX);
         let focus = DemandFocus::try_new(
-            WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
+            WorldPosition::try_new(WorldId::new(7), [0.0, 0.0, 0.0]).unwrap(),
             1,
             1,
             0,

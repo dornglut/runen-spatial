@@ -14,6 +14,8 @@ It does not own world generation, SDF/product semantics, gameplay/simulation act
 
 Foundation package. Owns world-qualified identities, global/frame-local positions, grid partitioning, hierarchy math, clipmap/ring mapping, checked spatial arithmetic, and deterministic spatial-hash primitives.
 
+The crate root is the supported public foundation namespace. Internal source modules organize implementation and are not alternate public API paths.
+
 It has no RunenSpatial runtime-package dependency.
 
 No generic spatial-index package is retained. The inherited provisional index had no maintained consumer and did not justify an independent package contract. A future index belongs with a proven consumer until reusable ownership and complexity requirements are established.

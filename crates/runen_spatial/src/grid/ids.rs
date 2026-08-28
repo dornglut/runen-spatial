@@ -3,17 +3,13 @@ use serde::{Deserialize, Serialize};
 use crate::WorldId;
 use crate::grid::{ChunkCoord3, RegionCoord3};
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ChunkId {
     pub world_id: WorldId,
     pub coord: ChunkCoord3,
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RegionId {
     pub world_id: WorldId,
     pub coord: RegionCoord3,
