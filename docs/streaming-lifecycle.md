@@ -1,28 +1,53 @@
 # Streaming Availability Lifecycle
 
-This document explains the current responsibility of `runen-spatial-streaming`. Exact public signatures and transition tests are owned by the package source, rustdoc, and tests.
+This document explains the responsibility of `runen-spatial-streaming`. Exact public signatures and transition tests are owned by the package source, rustdoc, and tests.
 
 ## Ownership
 
-The streaming package coordinates content-agnostic availability work: desired/undesired chunk intent, budgeted load/unload request issuance, correlation with backend events, deterministic request/event ordering, reversal, failure reporting, and diagnostics.
+The streaming package coordinates content-agnostic availability work: desired/undesired chunk intent, budgeted load/unload request issuance, correlation with backend events, deterministic request/event ordering, reversal, blocking failure state, and diagnostics.
 
-The backend owns actual IO and payload/resource creation. The host owns product semantics, payload caches, gameplay/ECS activation, rendering, retry/backoff policy not explicitly modeled by the framework, and application degradation decisions.
+The backend owns actual IO and payload/resource creation. The host owns product semantics, payload caches, gameplay/ECS activation, rendering, retry timing/backoff, and application degradation policy.
 
-## Current lifecycle
+A provider result is paired to framework work by its nonzero request ID, world-qualified `ChunkId`, and load/unload operation. Payload/resource transfer is not part of the RunenSpatial contract.
 
-The implementation currently represents requested, loaded, active, parked, evicted, and failed conditions in one combined lifecycle enum. Load/unload requests are correlated by request IDs and drained through per-tick budgets. Backend events drive completion/failure transitions.
+## Runtime state
 
-This combined model is the current baseline, not proof that availability, operation, activation, and failure are one durable state dimension.
+Each tracked chunk separates four concerns:
 
-## Known contract debt
+- desired intent plus its current `DemandRank`;
+- observed availability: `Absent` or `Resident`;
+- current operation: idle, queued, issued, or provider-started load/unload work;
+- an optional blocking load/unload failure while current availability does not satisfy current intent.
 
-The current baseline still requires explicit resolution of:
+Issued operations own the complete issued request. Request lookup state is only a correlation index and does not duplicate request identity/kind in parallel record fields.
 
-- load failure versus unload failure semantics and whether residency is preserved;
-- request-ID exhaustion/non-reuse behavior;
-- post-load payload/result pairing;
-- queue and record-retention bounds during long-running exploration;
-- orthogonal desired, observed availability, in-flight operation, activation, and last-failure state where required;
-- deterministic pressure/event behavior under bounded capacity.
+Availability changes only on successful provider completion:
 
-Those corrections must remain content-agnostic and must not move backend IO or host activation policy into this package.
+- load queue/request/start leaves availability `Absent`;
+- successful load completion changes availability to `Resident`;
+- unload queue/request/start leaves availability `Resident`;
+- successful unload completion changes availability to `Absent`;
+- failed load remains `Absent`;
+- failed unload remains `Resident`.
+
+A failure is retained only while it blocks convergence to current intent. Intent reversal clears a failure when existing availability already satisfies the new target. Retry is explicit; RunenSpatial does not choose retry timing or backoff.
+
+## Reversal
+
+The provider contract is non-cancelling once a request is issued:
+
+- if load becomes undesired after issuance, allow it to finish and queue unload after successful completion;
+- if unload becomes desired after issuance, allow it to finish and queue load after successful completion;
+- reverse unissued queued work directly without provider churn.
+
+Neutral records are removed once they are undesired, absent, idle, have no blocking failure, and own no pending request. Runtime records therefore represent live framework state rather than exploration history.
+
+## Request identity
+
+Request IDs are opaque, nonzero, monotonically generated identities. They are never silently saturated or reused.
+
+A tick reserves the complete request-ID batch before changing queued operations into issued operations. If the remaining ID domain cannot satisfy that complete batch, it issues no new requests and reports `request_id_exhausted` in the tick output. Successful demand changes from that tick remain committed and visible.
+
+## Remaining contract work
+
+Long-running state is not yet fully bounded when records are legitimately retained by residency or stalled providers. The next lifecycle step must define explicit tracked-record/pending-operation capacity, deterministic admission/backpressure behavior, and diagnostics without moving backend IO, payload ownership, or host retry/degradation policy into this package.

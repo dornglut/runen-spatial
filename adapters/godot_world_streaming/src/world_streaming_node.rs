@@ -7,7 +7,7 @@ use runen_spatial_demand::{
     SpatialDemandError,
 };
 use runen_spatial_streaming::{
-    ChunkLifecycleState, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
+    ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
     StreamRequestKind, StreamingBudgets, StreamingTick, WorldStreamingConfig,
     WorldStreamingController, WorldStreamingEvent, WorldStreamingEventKind,
 };
@@ -214,7 +214,11 @@ impl GodotWorldStreamingNode {
             return;
         };
         match controller.tick(StreamingTick::from_demand_changes(changes)) {
-            Ok(output) => self.emit_tick_output(output.requests, output.events),
+            Ok(output) => self.emit_tick_output(
+                output.requests,
+                output.events,
+                output.request_id_exhausted,
+            ),
             Err(error) => {
                 let message = GString::from(format!("{error:?}").as_str());
                 self.signals().streaming_error().emit(&message);
@@ -239,7 +243,7 @@ impl GodotWorldStreamingNode {
 
     #[func]
     pub fn resident_chunk_count(&self) -> i64 {
-        self.count_records_with_state(ChunkLifecycleState::Resident)
+        self.count_records_with_availability(ChunkAvailability::Resident)
     }
 
     #[func]
@@ -297,7 +301,7 @@ impl GodotWorldStreamingNode {
     ) {
         let Some(event) = provider_event_from_godot(self.world_id, request_id, x, y, z, kind)
         else {
-            let message = GString::from("request_id must be non-negative");
+            let message = GString::from("request_id must be a positive signed 64-bit integer");
             self.signals().streaming_error().emit(&message);
             return;
         };
@@ -323,7 +327,12 @@ impl GodotWorldStreamingNode {
         }
     }
 
-    fn emit_tick_output(&mut self, requests: Vec<StreamRequest>, events: Vec<WorldStreamingEvent>) {
+    fn emit_tick_output(
+        &mut self,
+        requests: Vec<StreamRequest>,
+        events: Vec<WorldStreamingEvent>,
+        request_id_exhausted: bool,
+    ) {
         for request in requests {
             self.emit_stream_request(request);
         }
@@ -331,10 +340,18 @@ impl GodotWorldStreamingNode {
         for event in events {
             self.emit_world_event(event);
         }
+
+        if request_id_exhausted {
+            let message = GString::from("stream request ID space exhausted");
+            self.signals().streaming_error().emit(&message);
+        }
     }
 
     fn emit_stream_request(&mut self, request: StreamRequest) {
-        let request_id = request_id_to_i64(request.request_id);
+        let Some(request_id) = request_id_to_i64(request.request_id) else {
+            self.report_request_id_error(request.request_id);
+            return;
+        };
         let chunk = request.chunk_id.coord;
         match request.kind {
             StreamRequestKind::Load => self
@@ -353,8 +370,12 @@ impl GodotWorldStreamingNode {
         match event.kind {
             WorldStreamingEventKind::ProviderStarted => {
                 if let Some(request_id) = event.request_id {
+                    let Some(request_id_value) = request_id_to_i64(request_id) else {
+                        self.report_request_id_error(request_id);
+                        return;
+                    };
                     self.signals().chunk_provider_started().emit(
-                        request_id_to_i64(request_id),
+                        request_id_value,
                         chunk.x,
                         chunk.y,
                         chunk.z,
@@ -363,8 +384,12 @@ impl GodotWorldStreamingNode {
             }
             WorldStreamingEventKind::ProviderCompleted => {
                 if let Some(request_id) = event.request_id {
+                    let Some(request_id_value) = request_id_to_i64(request_id) else {
+                        self.report_request_id_error(request_id);
+                        return;
+                    };
                     self.signals().chunk_provider_completed().emit(
-                        request_id_to_i64(request_id),
+                        request_id_value,
                         chunk.x,
                         chunk.y,
                         chunk.z,
@@ -373,8 +398,12 @@ impl GodotWorldStreamingNode {
             }
             WorldStreamingEventKind::ProviderFailed => {
                 if let Some(request_id) = event.request_id {
+                    let Some(request_id_value) = request_id_to_i64(request_id) else {
+                        self.report_request_id_error(request_id);
+                        return;
+                    };
                     self.signals().chunk_provider_failed().emit(
-                        request_id_to_i64(request_id),
+                        request_id_value,
                         chunk.x,
                         chunk.y,
                         chunk.z,
@@ -433,6 +462,15 @@ impl GodotWorldStreamingNode {
         self.signals().streaming_error().emit(&message);
     }
 
+    fn report_request_id_error(&mut self, request_id: StreamRequestId) {
+        let message = format!(
+            "request_id {} cannot be represented exactly as a Godot i64",
+            request_id.get()
+        );
+        let message = GString::from(message.as_str());
+        self.signals().streaming_error().emit(&message);
+    }
+
     fn streaming_budgets(&self) -> StreamingBudgets {
         StreamingBudgets {
             max_load_requests_per_tick: self.max_load_requests_per_tick,
@@ -440,13 +478,13 @@ impl GodotWorldStreamingNode {
         }
     }
 
-    fn count_records_with_state(&self, state: ChunkLifecycleState) -> i64 {
+    fn count_records_with_availability(&self, availability: ChunkAvailability) -> i64 {
         self.controller
             .as_ref()
             .map(|controller| {
                 controller
                     .records()
-                    .filter(|record| record.state == state)
+                    .filter(|record| record.availability() == availability)
                     .count() as i64
             })
             .unwrap_or(0)
@@ -538,8 +576,8 @@ fn demand_changes_from_node_values(
     }])
 }
 
-fn request_id_to_i64(request_id: StreamRequestId) -> i64 {
-    i64::try_from(request_id.0).unwrap_or(i64::MAX)
+fn request_id_to_i64(request_id: StreamRequestId) -> Option<i64> {
+    i64::try_from(request_id.get()).ok()
 }
 
 #[allow(dead_code)]
@@ -551,10 +589,11 @@ fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
 mod tests {
     use super::{
         NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
-        requested_radii, requested_region_dims,
+        request_id_to_i64, requested_radii, requested_region_dims,
     };
     use runen_spatial::{SpatialMathError, WorldId, WorldPosition};
     use runen_spatial_demand::{DemandAxis, DemandSourceChange, SpatialDemandError};
+    use runen_spatial_streaming::StreamRequestId;
 
     #[test]
     fn partition_values_reject_invalid_edges_without_repairing_them() {
@@ -636,5 +675,15 @@ mod tests {
             }
             DemandSourceChange::Remove { .. } => panic!("adapter must publish a replacement"),
         }
+    }
+
+    #[test]
+    fn request_id_translation_is_exact_and_fallible() {
+        let godot_max = u64::try_from(i64::MAX).unwrap();
+        let maximum = StreamRequestId::try_new(godot_max).unwrap();
+        assert_eq!(request_id_to_i64(maximum), Some(i64::MAX));
+
+        let too_large = StreamRequestId::try_new(godot_max + 1).unwrap();
+        assert_eq!(request_id_to_i64(too_large), None);
     }
 }

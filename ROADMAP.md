@@ -8,9 +8,11 @@ Make retained foundational public values and operations intentional and internal
 
 Do not add generic geometry/index abstractions without a proven consumer.
 
-## 2. Correct availability lifecycle semantics
+## 2. Bound long-running streaming state
 
-Replace the combined lifecycle with orthogonal desired/availability/operation/failure state where that separation is required by observable behavior. Correct request identity/exhaustion, unload-failure residency, payload/result pairing, queue pressure, reversal, and long-running record-retention semantics.
+Add explicit, host-neutral bounds for tracked runtime records and pending operations now that desired intent, observed availability, operation progress, blocking failure, and request identity are separate contracts.
+
+Define deterministic behavior when operational capacity is reached, including queue admission/backpressure and diagnostics. Preserve provider correlation and reversal semantics without moving IO, payload caches, automatic retry/backoff, or application degradation policy into RunenSpatial.
 
 ## 3. Harden retained integration contracts
 

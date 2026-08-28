@@ -22,10 +22,42 @@ pub fn provider_event_from_godot(
     z: i64,
     kind: ProviderEventKind,
 ) -> Option<ProviderEvent> {
-    let request_id = u64::try_from(request_id).ok()?;
+    let request_id = u64::try_from(request_id)
+        .ok()
+        .and_then(StreamRequestId::try_new)?;
     Some(ProviderEvent {
-        request_id: StreamRequestId(request_id),
+        request_id,
         chunk_id: chunk_id_from_xyz(world_id, x, y, z),
         kind,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::provider_event_from_godot;
+    use runen_spatial_streaming::ProviderEventKind;
+
+    #[test]
+    fn provider_event_rejects_nonpositive_request_ids() {
+        for request_id in [-1, 0] {
+            assert!(
+                provider_event_from_godot(
+                    7,
+                    request_id,
+                    1,
+                    2,
+                    3,
+                    ProviderEventKind::Completed,
+                )
+                .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn provider_event_preserves_positive_request_ids_exactly() {
+        let event = provider_event_from_godot(7, i64::MAX, 1, 2, 3, ProviderEventKind::Completed)
+            .unwrap();
+        assert_eq!(event.request_id.get(), i64::MAX as u64);
+    }
 }
