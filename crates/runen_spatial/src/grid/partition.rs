@@ -47,14 +47,6 @@ impl GridPartitionConfig {
         self.region_chunk_dims
     }
 
-    pub fn world_position_from_frame_local(
-        &self,
-        frame: WorldFrame,
-        position: FrameLocalPosition,
-    ) -> Result<WorldPosition, SpatialMathError> {
-        frame.to_global(position)
-    }
-
     pub fn chunk_coord_from_world_position(
         &self,
         position: WorldPosition,
@@ -72,7 +64,7 @@ impl GridPartitionConfig {
         frame: WorldFrame,
         position: FrameLocalPosition,
     ) -> Result<ChunkCoord3, SpatialMathError> {
-        self.chunk_coord_from_world_position(self.world_position_from_frame_local(frame, position)?)
+        self.chunk_coord_from_world_position(frame.to_global(position)?)
     }
 
     pub fn chunk_id_from_world_position(
@@ -90,25 +82,22 @@ impl GridPartitionConfig {
         frame: WorldFrame,
         position: FrameLocalPosition,
     ) -> Result<ChunkId, SpatialMathError> {
-        self.chunk_id_from_world_position(self.world_position_from_frame_local(frame, position)?)
+        self.chunk_id_from_world_position(frame.to_global(position)?)
     }
 
-    pub fn region_coord_from_chunk_coord(
-        &self,
-        chunk: ChunkCoord3,
-    ) -> Result<RegionCoord3, SpatialMathError> {
-        Ok(RegionCoord3 {
+    pub fn region_coord_from_chunk_coord(&self, chunk: ChunkCoord3) -> RegionCoord3 {
+        RegionCoord3 {
             x: chunk.x.div_euclid(i64::from(self.region_chunk_dims[0])),
             y: chunk.y.div_euclid(i64::from(self.region_chunk_dims[1])),
             z: chunk.z.div_euclid(i64::from(self.region_chunk_dims[2])),
-        })
+        }
     }
 
-    pub fn region_id_from_chunk_id(&self, chunk_id: ChunkId) -> Result<RegionId, SpatialMathError> {
-        Ok(RegionId::new(
+    pub fn region_id_from_chunk_id(&self, chunk_id: ChunkId) -> RegionId {
+        RegionId::new(
             chunk_id.world_id,
-            self.region_coord_from_chunk_coord(chunk_id.coord)?,
-        ))
+            self.region_coord_from_chunk_coord(chunk_id.coord),
+        )
     }
 
     pub fn chunk_origin_world_position(

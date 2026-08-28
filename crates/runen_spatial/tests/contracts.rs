@@ -1,5 +1,5 @@
 use runen_spatial::{
-    ChunkCoord3, ClipmapConfig, ClipmapCoord3, ClipmapLevel, FrameLocalPosition, GridLevel,
+    ChunkCoord3, ChunkId, ClipmapConfig, ClipmapCoord3, ClipmapLevel, FrameLocalPosition, GridLevel,
     GridPartitionConfig, HierarchicalChunkId, HierarchicalGridConfig, RingBufferConfig,
     SpatialMathError, WorldFrame, WorldId, WorldPosition, clipmap_coord_from_world_position,
     clipmap_window_for_center, ring_slot_for_coord,
@@ -65,7 +65,7 @@ fn positions_and_frames_are_finite_namespaced_and_translation_only() {
         Err(SpatialMathError::NonFiniteValue { .. })
     ));
     let origin = WorldPosition::try_new(WorldId(1), [10.0, -2.0, 3.0]).unwrap();
-    let frame = WorldFrame::try_new(origin).unwrap();
+    let frame = WorldFrame::new(origin);
     let global = WorldPosition::try_new(WorldId(1), [12.5, 1.0, 3.0]).unwrap();
     let local = frame.to_local(global).unwrap();
     assert_eq!(local.meters(), [2.5, 3.0, 0.0]);
@@ -136,17 +136,16 @@ fn partition_uses_checked_floor_conversion_and_negative_division() {
         partition.chunk_coord_from_world_position(position).unwrap(),
         ChunkCoord3 { x: -1, y: 0, z: 1 }
     );
-    assert_eq!(
-        partition
-            .region_coord_from_chunk_coord(ChunkCoord3 {
-                x: -1,
-                y: -8,
-                z: -9
-            })
-            .unwrap()
-            .z,
-        -2
-    );
+    let chunk = ChunkCoord3 {
+        x: -1,
+        y: -8,
+        z: -9,
+    };
+    let region = partition.region_coord_from_chunk_coord(chunk);
+    assert_eq!(region.z, -2);
+    let region_id = partition.region_id_from_chunk_id(ChunkId::new(WorldId(3), chunk));
+    assert_eq!(region_id.world_id, WorldId(3));
+    assert_eq!(region_id.coord, region);
     let lower =
         WorldPosition::try_new(WorldId(3), [-9_223_372_036_854_775_808.0, 0.0, 0.0]).unwrap();
     assert_eq!(
