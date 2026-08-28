@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   implement:
-    if: github.event.head_commit.message == 'Retry corrected issue 25 executor'
+    if: github.event.head_commit.message == 'Retry issue 25 after clippy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -54,6 +54,20 @@ jobs:
           if old not in body:
               raise SystemExit('refinement helper shape changed unexpectedly')
           body = body.replace(old, new, 1)
+
+          docs_marker = "p = Path('docs/spatial-demand.md')\n"
+          streaming_fix = '''p = Path('crates/runen_spatial_streaming/src/controller.rs')
+          value = p.read_text()
+          value = value.replace('delta.entered().iter().copied()', 'delta.entered()')
+          value = value.replace('delta.updated().iter().copied()', 'delta.updated()')
+          value = value.replace('delta.exited().iter().copied()', 'delta.exited()')
+          p.write_text(value)
+
+          '''
+          if docs_marker not in body:
+              raise SystemExit('streaming clippy insertion point missing')
+          body = body.replace(docs_marker, streaming_fix + docs_marker, 1)
+
           cleanup = 'rm .github/workflows/bootstrap-issue-25-final.yml\n'
           if cleanup not in body:
               raise SystemExit('final workflow cleanup marker missing')
