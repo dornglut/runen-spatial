@@ -8,11 +8,14 @@ use runen_spatial_demand::{
 };
 use runen_spatial_streaming::{
     ChunkAvailability, ProviderEvent, ProviderEventKind, StreamRequest, StreamRequestId,
-    StreamRequestKind, StreamingBudgets, StreamingTick, WorldStreamingConfig,
+    StreamRequestKind, StreamingBudgets, StreamingCapacity, StreamingTick, WorldStreamingConfig,
     WorldStreamingController, WorldStreamingEvent, WorldStreamingEventKind,
 };
 
 use crate::bridge::{provider_event_from_godot, vector3_to_meters};
+
+const ADAPTER_STREAMING_CAPACITY: StreamingCapacity = StreamingCapacity::new(1024, 4, 4);
+const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
 
 #[derive(GodotClass)]
 #[class(base=Node)]
@@ -214,9 +217,7 @@ impl GodotWorldStreamingNode {
             return;
         };
         match controller.tick(StreamingTick::from_demand_changes(changes)) {
-            Ok(output) => {
-                self.emit_tick_output(output.requests, output.events, output.request_id_exhausted)
-            }
+            Ok(output) => self.emit_tick_output(output.requests, output.request_id_exhausted),
             Err(error) => {
                 let message = GString::from(format!("{error:?}").as_str());
                 self.signals().streaming_error().emit(&message);
@@ -325,18 +326,9 @@ impl GodotWorldStreamingNode {
         }
     }
 
-    fn emit_tick_output(
-        &mut self,
-        requests: Vec<StreamRequest>,
-        events: Vec<WorldStreamingEvent>,
-        request_id_exhausted: bool,
-    ) {
+    fn emit_tick_output(&mut self, requests: Vec<StreamRequest>, request_id_exhausted: bool) {
         for request in requests {
             self.emit_stream_request(request);
-        }
-
-        for event in events {
-            self.emit_world_event(event);
         }
 
         if request_id_exhausted {
@@ -367,46 +359,31 @@ impl GodotWorldStreamingNode {
         let chunk = event.chunk_id.coord;
         match event.kind {
             WorldStreamingEventKind::ProviderStarted => {
-                if let Some(request_id) = event.request_id {
-                    let Some(request_id_value) = request_id_to_i64(request_id) else {
-                        self.report_request_id_error(request_id);
-                        return;
-                    };
-                    self.signals().chunk_provider_started().emit(
-                        request_id_value,
-                        chunk.x,
-                        chunk.y,
-                        chunk.z,
-                    );
-                }
+                let Some(request_id) = request_id_to_i64(event.request_id) else {
+                    self.report_request_id_error(event.request_id);
+                    return;
+                };
+                self.signals()
+                    .chunk_provider_started()
+                    .emit(request_id, chunk.x, chunk.y, chunk.z);
             }
             WorldStreamingEventKind::ProviderCompleted => {
-                if let Some(request_id) = event.request_id {
-                    let Some(request_id_value) = request_id_to_i64(request_id) else {
-                        self.report_request_id_error(request_id);
-                        return;
-                    };
-                    self.signals().chunk_provider_completed().emit(
-                        request_id_value,
-                        chunk.x,
-                        chunk.y,
-                        chunk.z,
-                    );
-                }
+                let Some(request_id) = request_id_to_i64(event.request_id) else {
+                    self.report_request_id_error(event.request_id);
+                    return;
+                };
+                self.signals()
+                    .chunk_provider_completed()
+                    .emit(request_id, chunk.x, chunk.y, chunk.z);
             }
             WorldStreamingEventKind::ProviderFailed => {
-                if let Some(request_id) = event.request_id {
-                    let Some(request_id_value) = request_id_to_i64(request_id) else {
-                        self.report_request_id_error(request_id);
-                        return;
-                    };
-                    self.signals().chunk_provider_failed().emit(
-                        request_id_value,
-                        chunk.x,
-                        chunk.y,
-                        chunk.z,
-                    );
-                }
+                let Some(request_id) = request_id_to_i64(event.request_id) else {
+                    self.report_request_id_error(event.request_id);
+                    return;
+                };
+                self.signals()
+                    .chunk_provider_failed()
+                    .emit(request_id, chunk.x, chunk.y, chunk.z);
             }
             WorldStreamingEventKind::Resident => {
                 self.signals()
@@ -418,10 +395,6 @@ impl GodotWorldStreamingNode {
                     .chunk_unloaded()
                     .emit(chunk.x, chunk.y, chunk.z);
             }
-            WorldStreamingEventKind::LoadQueued
-            | WorldStreamingEventKind::LoadRequested
-            | WorldStreamingEventKind::UnloadQueued
-            | WorldStreamingEventKind::UnloadRequested => {}
         }
     }
 
@@ -444,8 +417,12 @@ impl GodotWorldStreamingNode {
             self.vertical_load_radius_chunks,
             self.vertical_unload_radius_chunks,
         ])?;
-        let mut config =
-            WorldStreamingConfig::new(WorldId(self.world_id), partition, DemandLimits::default());
+        let mut config = WorldStreamingConfig::new(
+            WorldId(self.world_id),
+            partition,
+            DemandLimits::default(),
+            ADAPTER_STREAMING_CAPACITY,
+        );
         config.budgets = self.streaming_budgets();
         Ok(config)
     }
@@ -521,8 +498,6 @@ fn partition_from_node_values(
     GridPartitionConfig::try_new(f64::from(chunk_edge_meters), region_chunk_dims)
 }
 
-const NODE_FOCUS_SOURCE: DemandSourceId = DemandSourceId::new(0);
-
 fn requested_radii(requested: [i32; 4]) -> Result<[u32; 4], SpatialDemandError> {
     let [
         horizontal_desired,
@@ -586,8 +561,8 @@ fn chunk_id_to_xyz(chunk_id: ChunkId) -> (i64, i64, i64) {
 #[cfg(test)]
 mod tests {
     use super::{
-        NODE_FOCUS_SOURCE, demand_changes_from_node_values, partition_from_node_values,
-        request_id_to_i64, requested_radii, requested_region_dims,
+        ADAPTER_STREAMING_CAPACITY, NODE_FOCUS_SOURCE, demand_changes_from_node_values,
+        partition_from_node_values, request_id_to_i64, requested_radii, requested_region_dims,
     };
     use runen_spatial::{SpatialMathError, WorldId, WorldPosition};
     use runen_spatial_demand::{DemandAxis, DemandSourceChange, SpatialDemandError};
@@ -673,6 +648,13 @@ mod tests {
             }
             DemandSourceChange::Remove { .. } => panic!("adapter must publish a replacement"),
         }
+    }
+
+    #[test]
+    fn adapter_streaming_capacity_is_explicit() {
+        assert_eq!(ADAPTER_STREAMING_CAPACITY.max_tracked_records(), 1024);
+        assert_eq!(ADAPTER_STREAMING_CAPACITY.max_in_flight_loads(), 4);
+        assert_eq!(ADAPTER_STREAMING_CAPACITY.max_in_flight_unloads(), 4);
     }
 
     #[test]

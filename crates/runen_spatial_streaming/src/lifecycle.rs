@@ -9,10 +9,8 @@ pub enum ChunkAvailability {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ChunkOperation {
     Idle,
-    LoadQueued,
     LoadRequested(StreamRequest),
     Loading(StreamRequest),
-    UnloadQueued,
     UnloadRequested(StreamRequest),
     Unloading(StreamRequest),
 }
@@ -24,7 +22,7 @@ impl ChunkOperation {
             | Self::Loading(request)
             | Self::UnloadRequested(request)
             | Self::Unloading(request) => Some(request),
-            Self::Idle | Self::LoadQueued | Self::UnloadQueued => None,
+            Self::Idle => None,
         }
     }
 }
