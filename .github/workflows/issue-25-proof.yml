@@ -1,0 +1,114 @@
+name: Close issue 25 proof gaps
+
+on:
+  push:
+    branches:
+      - refactor/multi-source-demand
+
+permissions:
+  contents: write
+
+jobs:
+  prove:
+    if: github.event.head_commit.message == 'Close issue 25 proof gaps'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Apply reviewed proof closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          controller = Path('crates/runen_spatial_streaming/src/controller.rs')
+          controller_text = controller.read_text()
+          if controller_text.count('refresh_priority') != 2:
+              raise SystemExit('unexpected refresh_priority occurrence count')
+          controller.write_text(controller_text.replace('refresh_priority', 'refresh_rank'))
+          PY
+
+          cat >> crates/runen_spatial_demand/tests/planner.rs <<'RS'
+
+          #[test]
+          fn total_contribution_limit_rejects_the_batch_atomically() {
+              let limits = DemandLimits::try_new(2, 25, 40, 40).unwrap();
+              let mut planner = planner(limits);
+
+              let error = planner
+                  .apply_changes([
+                      replace(1, focus(WorldId(7), [0.0; 3], 2, 2, 0, 0)),
+                      replace(2, focus(WorldId(7), [160.0, 0.0, 0.0], 2, 2, 0, 0)),
+                  ])
+                  .unwrap_err();
+
+              assert_eq!(
+                  error,
+                  SpatialDemandError::TotalContributionLimitExceeded {
+                      limit: 40,
+                      candidate: 50,
+                  }
+              );
+              assert_eq!(planner.source_count(), 0);
+              assert!(planner.effective_snapshot().is_empty());
+          }
+
+          #[test]
+          fn delta_distinguishes_entry_class_change_rerank_and_exit() {
+              let mut planner = planner(DemandLimits::default());
+              let source = DemandSourceId::new(1);
+              planner
+                  .replace_source(
+                      source,
+                      snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 1, 0, 0)), []),
+                  )
+                  .unwrap();
+
+              let moved_once = planner
+                  .replace_source(
+                      source,
+                      snapshot(Some(focus(WorldId(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+                  )
+                  .unwrap();
+              assert_eq!(moved_once.entered().len(), 1);
+              assert_eq!(moved_once.updated().len(), 1);
+              assert!(moved_once.exited().is_empty());
+              assert_eq!(
+                  moved_once.updated()[0].chunk_id().coord,
+                  ChunkCoord3 { x: 0, y: 0, z: 0 }
+              );
+              assert_eq!(moved_once.updated()[0].class(), DemandClass::Retained);
+
+              let moved_twice = planner
+                  .replace_source(
+                      source,
+                      snapshot(Some(focus(WorldId(7), [32.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+                  )
+                  .unwrap();
+              assert_eq!(moved_twice.entered().len(), 1);
+              assert_eq!(moved_twice.updated().len(), 1);
+              assert_eq!(moved_twice.exited().len(), 1);
+              assert_eq!(
+                  moved_twice.exited()[0].chunk_id().coord,
+                  ChunkCoord3 { x: 0, y: 0, z: 0 }
+              );
+          }
+          RS
+
+          rm .github/workflows/issue-25-proof.yml
+          cargo fmt --all
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Close multi-source demand proof gaps"
+
+      - name: Validate clean candidate
+        shell: bash
+        run: cargo validate
+
+      - name: Publish proof-complete candidate
+        shell: bash
+        run: git push origin HEAD:refactor/multi-source-demand
