@@ -1,0 +1,117 @@
+name: Bootstrap issue 23 final 3
+
+on:
+  push:
+    branches:
+      - refactor/godot-adapter-ownership
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.event.head_commit.message == 'Run issue 23 candidate validation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Build and validate final candidate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected text not found in {path}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace("Cargo.toml", '  "demos/chunk_streaming_demo",\n', "")
+          replace(
+              "xtask/src/main.rs",
+              '        "crates/world_core_prelude",\n',
+              '        "crates/world_core_prelude",\n        "demos/chunk_streaming_demo",\n',
+          )
+          replace(
+              "xtask/src/main.rs",
+              '        "demos/chunk_streaming_demo/Cargo.toml".to_owned(),\n',
+              "",
+          )
+          replace(
+              "xtask/src/main.rs",
+              '        "crates/runen_spatial_streaming/Cargo.toml",\n        "demos/chunk_streaming_demo/Cargo.toml",\n',
+              '        "crates/runen_spatial_streaming/Cargo.toml",\n',
+          )
+          replace(
+              "xtask/src/main.rs",
+              '''    let demo_manifest = read_text(root, "demos/chunk_streaming_demo/Cargo.toml")?;\n    if demo_manifest.contains("../../../") || demo_manifest.contains("tile_topology") {\n        return Err("demo must not depend on an external sibling checkout".to_owned());\n    }\n\n''',
+              "",
+          )
+          replace(
+              "README.md",
+              "- an optional experimental Godot adapter and a repository demo.",
+              "- a retained optional, pre-release Godot translation adapter backed by a maintained consumer.",
+          )
+          replace(
+              "README.md",
+              "Known architectural work remains around retained foundation contracts, adapter/demo disposition, multi-source demand, streaming lifecycle decomposition, request identity, bounded long-running state, standalone conformance, and the later Runenwerk consumer cutover.",
+              "Known architectural work remains around retained foundation contracts, multi-source demand, streaming lifecycle decomposition, request identity, bounded long-running state, retained adapter contract hardening, standalone conformance, and the later Runenwerk consumer cutover.",
+          )
+          replace(
+              "ARCHITECTURE.md",
+              '''### `godot_world_streaming`\n\nOptional, non-default, non-publishable experimental adapter over the framework packages plus Godot. It is not framework authority and must not leak Godot semantics into core packages.\n\n### `chunk_streaming_demo`\n\nRepository-local executable demonstrating the current public framework flow. It is not an API or conformance authority.\n''',
+              '''### `godot_world_streaming`\n\nRetained optional, non-default, non-publishable pre-release translation adapter over the framework packages plus Godot. Maintained consumer evidence justifies the integration artifact, but it is not framework authority and must not leak Godot semantics into core packages.\n''',
+          )
+          replace(
+              "ARCHITECTURE.md",
+              '''runen-spatial\n├── runen-spatial-demand\n│   └── runen-spatial-streaming\n├── chunk_streaming_demo      (consumer)\n└── godot_world_streaming     (optional consumer)\n''',
+              '''runen-spatial\n├── runen-spatial-demand\n│   └── runen-spatial-streaming\n└── godot_world_streaming     (retained optional integration)\n''',
+          )
+          replace(
+              "docs/documentation-architecture.md",
+              '| Current experimental Godot consumer | `docs/godot-integration.md` |',
+              '| Retained Godot translation integration boundary | `docs/godot-integration.md` |',
+          )
+          Path("docs/godot-integration.md").write_text('''# Godot Integration\n\n`adapters/godot_world_streaming` is RunenSpatial's retained optional, non-default, non-publishable pre-release Godot translation integration. Maintained consumer evidence justifies keeping this artifact in the repository.\n\nIt is not framework authority and does not justify Godot dependencies or engine semantics in the host-neutral packages.\n\n## Ownership boundary\n\nRunenSpatial owns the adapter's translation between Godot-facing values and the host-neutral spatial-demand/availability contracts, plus the Godot-visible request/event bridge required to expose those contracts.\n\nThe consuming host owns scenes, providers, payload caches, generation, realization, rendering, physics, persistence, gameplay behavior, and other product or engine policy.\n\n## Current role\n\nThe adapter converts Godot-facing configuration and positions into the current foundation/demand/streaming APIs, emits framework requests/events through Godot-visible methods and signals, and can rebuild its controller from node configuration.\n\nIts current numeric conversion, request-ID representation, configuration-mutation, and controller-reset behavior remain pre-release integration contracts. They should be hardened only after the corresponding host-neutral demand and lifecycle contracts stabilize, avoiding duplicate semantic churn.\n\n## Maturity\n\nRetention is established; API stability is not. No production-support or stable Godot API promise is made yet.\n''')
+          Path("ROADMAP.md").write_text('''# RunenSpatial Roadmap\n\nThe roadmap owns durable sequencing only. GitHub issues and pull requests own detailed acceptance criteria and live execution state.\n\n## 1. Harden retained foundation contracts\n\nMake retained foundational public values and operations intentional and internally consistent. Resolve opaque-ID representation/default semantics, redundant spatial-hash vocabulary, inconsistent level typing, silent narrowing/saturation, and constructors or `Result` surfaces whose advertised fallibility does not match their implementation.\n\nDo not add generic geometry/index abstractions without a proven consumer.\n\n## 2. Establish deterministic multi-source spatial demand\n\nReplace the single-focus planner with bounded, atomic, deterministic multi-source demand: explicit source identity, complete source replacement/removal, source-local hysteresis, pins, total ordering/ranks, pressure limits, and deterministic deltas.\n\nModel the actual axis-aligned chunk-volume contract. Do not preserve a geometry selector when alternative variants execute identical semantics.\n\n## 3. Correct availability lifecycle semantics\n\nReplace the combined lifecycle with orthogonal desired/availability/operation/failure state where that separation is required by observable behavior. Correct request identity/exhaustion, unload-failure residency, payload/result pairing, queue pressure, reversal, and long-running record-retention semantics.\n\n## 4. Harden retained integration contracts\n\nAfter the host-neutral demand and lifecycle contracts stabilize, harden the retained `godot_world_streaming` translation boundary against those contracts. Keep Godot-specific scene, provider, cache, realization, and product policy outside the framework packages, and keep the adapter API pre-release until its translation behavior is independently proven.\n\n## 5. Prove standalone conformance\n\nExercise the retained public packages through host-neutral public APIs without internal source access. Bind deterministic replay, bounded resource behavior, failure propagation, and package independence before publication is considered.\n\n## 6. Cut over Runenwerk separately\n\nAuthorize downstream Runenwerk migration only after standalone conformance. Migrate in dependency order and delete duplicate Runenwerk authority component-by-component. Do not use permanent wrappers, forwarding crates, source mirrors, branch dependencies, or submodules.\n''')
+          demo = Path("demos/chunk_streaming_demo")
+          if not demo.exists():
+              raise SystemExit("expected demo directory is absent")
+          shutil.rmtree(demo)
+
+          lock = Path("Cargo.lock")
+          content = lock.read_text()
+          stanza = '''[[package]]\nname = "chunk_streaming_demo"\nversion = "0.1.0"\ndependencies = [\n "runen-spatial",\n "runen-spatial-demand",\n "runen-spatial-streaming",\n]\n\n'''
+          if content.count(stanza) != 1:
+              raise SystemExit("expected exactly one chunk_streaming_demo lock stanza")
+          lock.write_text(content.replace(stanza, "", 1))
+          PY
+
+          cargo metadata --format-version 1 --locked --no-deps >/dev/null
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          stanza = '''[[package]]\nname = "chunk_streaming_demo"\nversion = "0.1.0"\ndependencies = [\n "runen-spatial",\n "runen-spatial-demand",\n "runen-spatial-streaming",\n]\n\n'''
+          diff = subprocess.check_output(["git", "diff", "--", "Cargo.lock"], text=True)
+          added = [line for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++")]
+          removed = [line for line in diff.splitlines() if line.startswith("-") and not line.startswith("---")]
+          expected = ["-" + line for line in stanza.splitlines()]
+          if added or removed != expected:
+              raise SystemExit(f"unexpected Cargo.lock churn:\n{diff}")
+
+          for path in Path('.github/workflows').glob('bootstrap-issue-23*.yml'):
+              path.unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Retain Godot adapter and remove demo"
+          cargo validate
+          git push origin HEAD:refactor/godot-adapter-ownership
