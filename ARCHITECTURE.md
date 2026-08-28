@@ -44,9 +44,13 @@ Private repository tooling behind `cargo validate`. It is not part of the runtim
 
 ```text
 runen-spatial
+└── runen-spatial-demand
+    └── runen-spatial-streaming
+
+godot_world_streaming        (retained optional integration)
+├── runen-spatial
 ├── runen-spatial-demand
-│   └── runen-spatial-streaming
-└── godot_world_streaming     (retained optional integration)
+└── runen-spatial-streaming
 ```
 
 `runen-spatial-streaming` also depends directly on `runen-spatial`.
