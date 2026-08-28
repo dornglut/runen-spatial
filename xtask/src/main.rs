@@ -119,7 +119,9 @@ fn validate_required_and_retired_paths(root: &Path) -> Result<(), String> {
 
     for relative in FORBIDDEN {
         if root.join(relative).exists() {
-            return Err(format!("retired authority or surface must remain absent: {relative}"));
+            return Err(format!(
+                "retired authority or surface must remain absent: {relative}"
+            ));
         }
     }
 
@@ -235,7 +237,11 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
 
         for package in RETIRED_PACKAGES {
             let retired_name = format!(r#"name = "{package}""#);
-            if manifest.lines().map(str::trim_start).any(|line| line == retired_name) {
+            if manifest
+                .lines()
+                .map(str::trim_start)
+                .any(|line| line == retired_name)
+            {
                 return Err(format!("retired package name in {relative}: {package}"));
             }
         }
@@ -248,7 +254,9 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
     for source_path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
-        .filter(|path| relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs"))
+        .filter(|path| {
+            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
+        })
     {
         let relative = relative_string(root, &source_path)?;
         let source = fs::read_to_string(&source_path)
@@ -256,7 +264,9 @@ fn validate_retired_surfaces(root: &Path) -> Result<(), String> {
 
         for retired_name in &retired_api {
             if source.contains(retired_name) {
-                return Err(format!("retired foundational API in {relative}: {retired_name}"));
+                return Err(format!(
+                    "retired foundational API in {relative}: {retired_name}"
+                ));
             }
         }
 
@@ -277,7 +287,8 @@ fn contains_standalone_crate_path(source: &str, package: &str) -> bool {
     while let Some(relative_index) = source[search_start..].find(&token) {
         let index = search_start + relative_index;
         let preceding = source[..index].chars().next_back();
-        if preceding.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_') {
+        if preceding.is_none_or(|character| !character.is_ascii_alphanumeric() && character != '_')
+        {
             return true;
         }
         search_start = index + token.len();
@@ -347,7 +358,10 @@ fn validate_repository_files(root: &Path) -> Result<(), String> {
         let metadata = fs::symlink_metadata(&path)
             .map_err(|error| format!("failed to inspect {}: {error}", path.display()))?;
         if metadata.file_type().is_symlink() {
-            return Err(format!("repository symlink is forbidden: {}", path.display()));
+            return Err(format!(
+                "repository symlink is forbidden: {}",
+                path.display()
+            ));
         }
         if is_authored_text(&path) && metadata.len() > MAX_AUTHORED_BYTES {
             return Err(format!(
@@ -418,7 +432,9 @@ fn validate_current_authority(root: &Path) -> Result<(), String> {
     for path in walk_files(root)?
         .into_iter()
         .filter(|path| path.extension() == Some(OsStr::new("rs")))
-        .filter(|path| relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs"))
+        .filter(|path| {
+            relative_string(root, path).is_ok_and(|relative| relative != "xtask/src/main.rs")
+        })
     {
         let text = fs::read_to_string(&path)
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
@@ -444,7 +460,11 @@ fn validate_provenance(root: &Path) -> Result<(), String> {
         "not a complete full-history secret scan",
         "public",
     ] {
-        require_contains("docs/provenance/repository-transfer.md", &provenance, required)?;
+        require_contains(
+            "docs/provenance/repository-transfer.md",
+            &provenance,
+            required,
+        )?;
     }
     Ok(())
 }
@@ -647,7 +667,9 @@ fn prove_clean_repository_state(root: &Path) -> Result<(), String> {
     if status.trim().is_empty() {
         Ok(())
     } else {
-        Err(format!("validation changed the tracked repository:\n{status}"))
+        Err(format!(
+            "validation changed the tracked repository:\n{status}"
+        ))
     }
 }
 
@@ -657,9 +679,7 @@ fn run(root: &Path, program: &str, arguments: &[&str]) -> Result<(), String> {
         .current_dir(root)
         .stdin(Stdio::null())
         .status()
-        .map_err(|error| {
-            format!("failed to run {program} {}: {error}", arguments.join(" "))
-        })?;
+        .map_err(|error| format!("failed to run {program} {}: {error}", arguments.join(" ")))?;
     if status.success() {
         Ok(())
     } else {
@@ -680,9 +700,7 @@ fn run_with_env(
         .current_dir(root)
         .stdin(Stdio::null())
         .status()
-        .map_err(|error| {
-            format!("failed to run {program} {}: {error}", arguments.join(" "))
-        })?;
+        .map_err(|error| format!("failed to run {program} {}: {error}", arguments.join(" ")))?;
     if status.success() {
         Ok(())
     } else {
@@ -696,14 +714,9 @@ fn run_output(root: &Path, program: &str, arguments: &[&str]) -> Result<String, 
         .current_dir(root)
         .stdin(Stdio::null())
         .output()
-        .map_err(|error| {
-            format!("failed to run {program} {}: {error}", arguments.join(" "))
-        })?;
+        .map_err(|error| format!("failed to run {program} {}: {error}", arguments.join(" ")))?;
     if !output.status.success() {
-        return Err(format!(
-            "command failed: {program} {}",
-            arguments.join(" ")
-        ));
+        return Err(format!("command failed: {program} {}", arguments.join(" ")));
     }
     String::from_utf8(output.stdout)
         .map_err(|error| format!("{program} output was not UTF-8: {error}"))
