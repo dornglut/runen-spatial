@@ -15,7 +15,7 @@ pub fn coord_from_world_position(
     level: ClipmapLevel,
     position: WorldPosition,
 ) -> Result<ClipmapCoord3, SpatialMathError> {
-    let edge = config.cell_edge_meters_for_level(level.0)?;
+    let edge = config.cell_edge_meters_for_level(level)?;
     let meters = position.meters();
     Ok(ClipmapCoord3 {
         x: coordinate_from_meters(meters[0], edge, "clipmap x")?,
@@ -29,7 +29,7 @@ pub fn window_for_center(
     level: ClipmapLevel,
     center: ClipmapCoord3,
 ) -> Result<ClipmapWindow, SpatialMathError> {
-    config.cell_edge_meters_for_level(level.0)?;
+    config.cell_edge_meters_for_level(level)?;
     let dims = config.window_dims();
     let half = [
         i64::from(dims[0] / 2),
