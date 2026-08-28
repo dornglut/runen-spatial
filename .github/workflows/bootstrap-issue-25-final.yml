@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   implement:
-    if: github.event.head_commit.message == 'Finalize issue 25 candidate'
+    if: github.event.head_commit.message == 'Retry issue 25 candidate'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -39,6 +39,11 @@ jobs:
           if not separator:
               raise SystemExit('could not isolate issue 25 transformation prefix')
           subprocess.run(['bash', '-euo', 'pipefail', '-c', prefix], check=True)
+
+          def replace_between(value, start_marker, end_marker, replacement):
+              start = value.index(start_marker)
+              end = value.index(end_marker, start)
+              return value[:start] + replacement + value[end:]
 
           Path('crates/runen_spatial_demand/src/identity.rs').write_text('''#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
           pub struct DemandSourceId(u64);
@@ -92,122 +97,278 @@ jobs:
 
           p = Path('crates/runen_spatial_demand/src/error.rs')
           error = p.read_text()
-          error = re.sub(
+          error, removed = re.subn(
               r'\n    EffectiveRankOverflow \{\n        candidate: usize,\n    \},',
               '',
               error,
               count=1,
           )
+          if removed != 1:
+              raise SystemExit('expected one false rank-overflow error variant')
           p.write_text(error)
 
           p = Path('crates/runen_spatial_demand/src/planner.rs')
           planner = p.read_text()
-          planner = planner.replace(
-              '''        if let Some(focus) = snapshot.focus() {
-              if focus.position().world_id() != self.world_id {
+
+          changes_candidate = '''    fn changes_candidate(
+              &self,
+              changes: &[DemandSourceChange],
+          ) -> Result<Candidate, SpatialDemandError> {
+              let mut snapshots = self
+                  .sources
+                  .iter()
+                  .map(|(source_id, state)| (*source_id, state.snapshot.clone()))
+                  .collect::<BTreeMap<_, _>>();
+              for change in changes {
+                  match change {
+                      DemandSourceChange::Replace { source_id, snapshot } => {
+                          snapshots.insert(*source_id, snapshot.clone());
+                      }
+                      DemandSourceChange::Remove { source_id } => {
+                          snapshots.remove(source_id);
+                      }
+                  }
+              }
+
+              self.validate_source_count(snapshots.len())?;
+
+              let total_limit = usize::try_from(self.limits.max_total_contributions()).map_err(|_| {
+                  SpatialDemandError::CountOverflow {
+                      operation: "total contribution limit conversion",
+                  }
+              })?;
+              let mut total_contributions = 0_usize;
+              for (source_id, snapshot) in &snapshots {
+                  let contribution_count = self.prospective_source_contribution_count(
+                      *source_id,
+                      snapshot,
+                      self.sources.get(source_id),
+                  )?;
+                  total_contributions = total_contributions
+                      .checked_add(contribution_count)
+                      .ok_or(SpatialDemandError::CountOverflow {
+                          operation: "total source contributions",
+                      })?;
+                  if total_contributions > total_limit {
+                      return Err(SpatialDemandError::TotalContributionLimitExceeded {
+                          limit: self.limits.max_total_contributions(),
+                          candidate: total_contributions,
+                      });
+                  }
+              }
+
+              let mut sources = BTreeMap::new();
+              for (source_id, snapshot) in snapshots {
+                  let existing = self.sources.get(&source_id);
+                  let state = if existing.is_some_and(|state| state.snapshot == snapshot) {
+                      existing.expect("existing source state was checked").clone()
+                  } else {
+                      self.replacement_state(source_id, snapshot, existing)?
+                  };
+                  sources.insert(source_id, state);
+              }
+              self.candidate(sources, total_contributions)
+          }
+
+          '''
+          planner = replace_between(
+              planner,
+              '    fn changes_candidate(\n',
+              '    fn validate_source_count(\n',
+              changes_candidate,
+          )
+
+          validation_and_precount = '''    fn validate_snapshot_world(
+              &self,
+              snapshot: &DemandSourceSnapshot,
+          ) -> Result<(), SpatialDemandError> {
+              if let Some(focus) = snapshot.focus()
+                  && focus.position().world_id() != self.world_id
+              {
                   return Err(SpatialMathError::WorldMismatch {
                       expected: self.world_id,
                       actual: focus.position().world_id(),
                   }
                   .into());
               }
-          }
-          ''',
-              '''        if let Some(focus) = snapshot.focus()
-              && focus.position().world_id() != self.world_id
-          {
-              return Err(SpatialMathError::WorldMismatch {
-                  expected: self.world_id,
-                  actual: focus.position().world_id(),
+              for pin in snapshot.pins() {
+                  if pin.world_id != self.world_id {
+                      return Err(SpatialMathError::WorldMismatch {
+                          expected: self.world_id,
+                          actual: pin.world_id,
+                      }
+                      .into());
+                  }
               }
-              .into());
+              Ok(())
           }
-          ''',
-              1,
+
+              fn prospective_source_contribution_count(
+                  &self,
+                  source_id: DemandSourceId,
+                  snapshot: &DemandSourceSnapshot,
+                  previous: Option<&SourceState>,
+              ) -> Result<usize, SpatialDemandError> {
+                  self.validate_snapshot_world(snapshot)?;
+
+                  if let Some(previous) = previous
+                      && previous.snapshot == *snapshot
+                  {
+                      return source_contribution_count(source_id, previous, self.limits);
+                  }
+
+                  let mut candidate = 0_usize;
+                  if let Some(focus) = snapshot.focus() {
+                      let center = self.partition.chunk_coord_from_world_position(focus.position())?;
+                      candidate = check_desired_volume(focus, source_id, self.limits)?;
+
+                      if let Some(previous) = previous {
+                          for chunk in previous.focus_chunks.keys().copied() {
+                              let is_desired = inside_box(
+                                  chunk,
+                                  center,
+                                  focus.horizontal_desired_radius(),
+                                  focus.vertical_desired_radius(),
+                              );
+                              let is_retained = inside_box(
+                                  chunk,
+                                  center,
+                                  focus.horizontal_retain_radius(),
+                                  focus.vertical_retain_radius(),
+                              );
+                              if !is_desired && is_retained {
+                                  candidate = candidate.checked_add(1).ok_or(
+                                      SpatialDemandError::CountOverflow {
+                                          operation: "prospective source contributions",
+                                      },
+                                  )?;
+                              }
+                          }
+                      }
+
+                      for pin in snapshot.pins() {
+                          let is_desired = inside_box(
+                              pin.coord,
+                              center,
+                              focus.horizontal_desired_radius(),
+                              focus.vertical_desired_radius(),
+                          );
+                          let overlaps_retained = previous.is_some_and(|previous| {
+                              previous.focus_chunks.contains_key(&pin.coord)
+                                  && !is_desired
+                                  && inside_box(
+                                      pin.coord,
+                                      center,
+                                      focus.horizontal_retain_radius(),
+                                      focus.vertical_retain_radius(),
+                                  )
+                          });
+                          if !is_desired && !overlaps_retained {
+                              candidate = candidate.checked_add(1).ok_or(
+                                  SpatialDemandError::CountOverflow {
+                                      operation: "prospective source contributions",
+                                  },
+                              )?;
+                          }
+                      }
+                  } else {
+                      candidate = snapshot.pins().count();
+                  }
+
+                  let limit = usize::try_from(self.limits.max_contributions_per_source()).map_err(
+                      |_| SpatialDemandError::CountOverflow {
+                          operation: "per-source limit conversion",
+                      },
+                  )?;
+                  if candidate > limit {
+                      return Err(SpatialDemandError::PerSourceContributionLimitExceeded {
+                          source_id,
+                          limit: self.limits.max_contributions_per_source(),
+                          candidate,
+                      });
+                  }
+                  Ok(candidate)
+              }
+
+          '''
+          planner = replace_between(
+              planner,
+              '    fn validate_snapshot_world(\n',
+              '    fn replacement_state(\n',
+              validation_and_precount,
           )
 
-          old_total = '''        let mut total = 0_usize;
-          let mut effective = BTreeMap::<ChunkId, Contribution>::new();
-          for (source_id, state) in &sources {
-              let contributions = self.source_contributions(*source_id, state)?;
-              total = total.checked_add(contributions.len()).ok_or(
-                  SpatialDemandError::CountOverflow {
-                      operation: "total source contributions",
-                  },
-              )?;
-              let total_limit = usize::try_from(self.limits.max_total_contributions())
-                  .map_err(|_| SpatialDemandError::CountOverflow {
-                      operation: "total contribution limit conversion",
-                  })?;
-              if total > total_limit {
-                  return Err(SpatialDemandError::TotalContributionLimitExceeded {
-                      limit: self.limits.max_total_contributions(),
-                      candidate: total,
-                  });
+          candidate_fn = '''    fn candidate(
+              &self,
+              sources: BTreeMap<DemandSourceId, SourceState>,
+              total_contributions: usize,
+          ) -> Result<Candidate, SpatialDemandError> {
+              self.validate_source_count(sources.len())?;
+              let mut effective = BTreeMap::<ChunkId, Contribution>::new();
+              for (source_id, state) in &sources {
+                  for contribution in self.source_contributions(*source_id, state)? {
+                      match effective.get(&contribution.chunk_id) {
+                          Some(previous)
+                              if compare_contribution(previous, &contribution) != Ordering::Greater => {}
+                          _ => {
+                              effective.insert(contribution.chunk_id, contribution);
+                          }
+                      }
+                  }
               }
-              for contribution in contributions {
-          '''
-          new_total = '''        let total_limit = usize::try_from(self.limits.max_total_contributions())
-              .map_err(|_| SpatialDemandError::CountOverflow {
-                  operation: "total contribution limit conversion",
+
+              let mut candidates = effective.into_values().collect::<Vec<_>>();
+              candidates.sort_by(compare_contribution);
+              let candidate_count = candidates.len();
+              let pinned = candidates
+                  .iter()
+                  .filter(|candidate| candidate.class == DemandClass::Pinned)
+                  .count();
+              let capacity = usize::try_from(self.limits.max_effective_chunks()).map_err(|_| {
+                  SpatialDemandError::CountOverflow {
+                      operation: "effective limit conversion",
+                  }
               })?;
-          let mut total = 0_usize;
-          for (source_id, state) in &sources {
-              let source_count = source_contribution_count(*source_id, state, self.limits)?;
-              total = total.checked_add(source_count).ok_or(
-                  SpatialDemandError::CountOverflow {
-                      operation: "total source contributions",
-                  },
-              )?;
-              if total > total_limit {
-                  return Err(SpatialDemandError::TotalContributionLimitExceeded {
-                      limit: self.limits.max_total_contributions(),
-                      candidate: total,
+              if pinned > capacity {
+                  return Err(SpatialDemandError::PinnedCapacityExceeded {
+                      limit: self.limits.max_effective_chunks(),
+                      pinned,
                   });
               }
+
+              let demanded = candidates
+                  .into_iter()
+                  .take(capacity)
+                  .enumerate()
+                  .map(|(index, contribution)| {
+                      DemandedChunk::new(
+                          contribution.chunk_id,
+                          DemandRank::from_bounded_index(index),
+                          contribution.class,
+                      )
+                  })
+                  .collect::<Vec<_>>();
+              let pressure = DemandPressureDiagnostics::new(
+                  candidate_count,
+                  demanded.len(),
+                  pinned,
+                  total_contributions,
+                  sources.len(),
+              );
+              let snapshot = EffectiveDemandSnapshot::new(demanded, pressure);
+              let delta = delta_between(&self.snapshot, &snapshot);
+              Ok(Candidate { sources, snapshot, delta })
           }
 
-          let mut effective = BTreeMap::<ChunkId, Contribution>::new();
-          for (source_id, state) in &sources {
-              let contributions = self.source_contributions(*source_id, state)?;
-              for contribution in contributions {
           '''
-          if old_total not in planner:
-              raise SystemExit('candidate total-contribution block changed unexpectedly')
-          planner = planner.replace(old_total, new_total, 1)
+          planner = replace_between(
+              planner,
+              '    fn candidate(\n',
+              '    fn source_contributions(\n',
+              candidate_fn,
+          )
 
-          old_rank = '''        let demanded = candidates
-              .into_iter()
-              .take(capacity)
-              .enumerate()
-              .map(|(index, contribution)| {
-                  Ok(DemandedChunk::new(
-                      contribution.chunk_id,
-                      DemandRank::try_from_index(index)?,
-                      contribution.class,
-                  ))
-              })
-              .collect::<Result<Vec<_>, SpatialDemandError>>()?;
-          '''
-          new_rank = '''        let demanded = candidates
-              .into_iter()
-              .take(capacity)
-              .enumerate()
-              .map(|(index, contribution)| {
-                  DemandedChunk::new(
-                      contribution.chunk_id,
-                      DemandRank::from_bounded_index(index),
-                      contribution.class,
-                  )
-              })
-              .collect::<Vec<_>>();
-          '''
-          if old_rank not in planner:
-              raise SystemExit('candidate rank construction changed unexpectedly')
-          planner = planner.replace(old_rank, new_rank, 1)
-
-          helper_marker = 'fn insert_limited(\n'
-          helper = '''fn source_contribution_count(
+          contribution_count = '''fn source_contribution_count(
               source_id: DemandSourceId,
               state: &SourceState,
               limits: DemandLimits,
@@ -238,24 +399,20 @@ jobs:
           }
 
           '''
-          if helper_marker not in planner:
-              raise SystemExit('candidate helper insertion point changed unexpectedly')
-          planner = planner.replace(helper_marker, helper + helper_marker, 1)
+          marker = 'fn insert_limited(\n'
+          index = planner.index(marker)
+          planner = planner[:index] + contribution_count + planner[index:]
           p.write_text(planner)
 
-          # Rank is the canonical streaming scheduling vocabulary in this slice. Source priority is not.
           for path in [
               'crates/runen_spatial_streaming/src/controller.rs',
               'crates/runen_spatial_streaming/src/request.rs',
               'crates/runen_spatial_streaming/tests/controller.rs',
           ]:
               p = Path(path)
-              value = p.read_text()
-              value = re.sub(r'\bpriority\b', 'rank', value)
+              value = re.sub(r'\bpriority\b', 'rank', p.read_text())
               p.write_text(value)
 
-          # The generic default remains opt-in convenience: constructors still require a DemandLimits value.
-          # Make that distinction explicit in the demand authority document.
           p = Path('docs/spatial-demand.md')
           docs = p.read_text()
           needle = 'The planner bounds source count, contributions per source, total contributions, and effective chunks. Desired-box cardinality is checked before materialization. Hard-limit or world/coordinate failures reject the whole source-change batch without mutation.'
@@ -264,17 +421,14 @@ jobs:
               raise SystemExit('demand limits documentation insertion point changed unexpectedly')
           p.write_text(docs.replace(needle, replacement, 1))
 
-          # Prove the vocabulary cleanup did not leave the old field name behind.
+          if 'EffectiveRankOverflow' in Path('crates/runen_spatial_demand/src/error.rs').read_text():
+              raise SystemExit('false effective-rank fallibility remains')
           for path in [
               'crates/runen_spatial_streaming/src/controller.rs',
               'crates/runen_spatial_streaming/src/request.rs',
           ]:
-              value = Path(path).read_text()
-              if re.search(r'\bpriority\b', value):
+              if re.search(r'\bpriority\b', Path(path).read_text()):
                   raise SystemExit(f'stale streaming priority vocabulary remains in {path}')
-
-          if 'EffectiveRankOverflow' in Path('crates/runen_spatial_demand/src/error.rs').read_text():
-              raise SystemExit('false effective-rank fallibility remains')
           PY
 
           cargo fmt --all
