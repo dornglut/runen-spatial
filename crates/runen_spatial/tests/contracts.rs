@@ -1,6 +1,6 @@
 use runen_spatial::{
-    ChunkCoord3, ChunkId, ClipmapConfig, ClipmapCoord3, ClipmapLevel, FrameLocalPosition, GridLevel,
-    GridPartitionConfig, HierarchicalChunkId, HierarchicalGridConfig, RingBufferConfig,
+    ChunkCoord3, ChunkId, ClipmapConfig, ClipmapCoord3, ClipmapLevel, FrameLocalPosition,
+    GridLevel, GridPartitionConfig, HierarchicalChunkId, HierarchicalGridConfig, RingBufferConfig,
     SpatialMathError, WorldFrame, WorldId, WorldPosition, clipmap_coord_from_world_position,
     clipmap_window_for_center, ring_slot_for_coord,
 };
