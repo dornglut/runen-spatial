@@ -16,7 +16,7 @@ The command checks:
 2. relative Markdown links;
 3. locked Cargo metadata;
 4. formatting;
-5. workspace tests, excluding the optional Godot adapter from the core test/MSRV pass;
+5. workspace tests, including the architectural runtime dependency-topology guard and public-API package integration/cross-layer conformance coverage, while excluding the optional Godot adapter from the core test/MSRV pass;
 6. all-target workspace checking and denied-warning Clippy;
 7. denied-warning workspace rustdoc;
 8. the declared Rust 1.93.0 core test baseline;
