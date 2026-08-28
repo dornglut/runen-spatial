@@ -217,9 +217,7 @@ impl GodotWorldStreamingNode {
             return;
         };
         match controller.tick(StreamingTick::from_demand_changes(changes)) {
-            Ok(output) => {
-                self.emit_tick_output(output.requests, output.events, output.request_id_exhausted)
-            }
+            Ok(output) => self.emit_tick_output(output.requests, output.request_id_exhausted),
             Err(error) => {
                 let message = GString::from(format!("{error:?}").as_str());
                 self.signals().streaming_error().emit(&message);
@@ -328,18 +326,9 @@ impl GodotWorldStreamingNode {
         }
     }
 
-    fn emit_tick_output(
-        &mut self,
-        requests: Vec<StreamRequest>,
-        events: Vec<WorldStreamingEvent>,
-        request_id_exhausted: bool,
-    ) {
+    fn emit_tick_output(&mut self, requests: Vec<StreamRequest>, request_id_exhausted: bool) {
         for request in requests {
             self.emit_stream_request(request);
-        }
-
-        for event in events {
-            self.emit_world_event(event);
         }
 
         if request_id_exhausted {
@@ -406,7 +395,6 @@ impl GodotWorldStreamingNode {
                     .chunk_unloaded()
                     .emit(chunk.x, chunk.y, chunk.z);
             }
-            WorldStreamingEventKind::LoadRequested | WorldStreamingEventKind::UnloadRequested => {}
         }
     }
 
