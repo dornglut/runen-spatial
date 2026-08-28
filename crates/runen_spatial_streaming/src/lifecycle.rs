@@ -1,4 +1,4 @@
-use crate::request::{StreamRequest, StreamRequestKind};
+use crate::request::StreamRequest;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ChunkAvailability {
@@ -18,25 +18,13 @@ pub enum ChunkOperation {
 }
 
 impl ChunkOperation {
-    pub const fn active_request(&self) -> Option<&StreamRequest> {
+    pub(crate) const fn active_request(&self) -> Option<&StreamRequest> {
         match self {
             Self::LoadRequested(request)
             | Self::Loading(request)
             | Self::UnloadRequested(request)
             | Self::Unloading(request) => Some(request),
             Self::Idle | Self::LoadQueued | Self::UnloadQueued => None,
-        }
-    }
-
-    pub const fn kind(self) -> Option<StreamRequestKind> {
-        match self {
-            Self::LoadQueued | Self::LoadRequested(_) | Self::Loading(_) => {
-                Some(StreamRequestKind::Load)
-            }
-            Self::UnloadQueued | Self::UnloadRequested(_) | Self::Unloading(_) => {
-                Some(StreamRequestKind::Unload)
-            }
-            Self::Idle => None,
         }
     }
 }

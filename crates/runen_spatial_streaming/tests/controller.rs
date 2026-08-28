@@ -460,9 +460,7 @@ fn invalid_demand_transaction_leaves_controller_state_unchanged() {
 #[test]
 fn unissued_queue_refreshes_rank_without_operation_churn() {
     let mut controller = controller(0, 0);
-    controller
-        .tick(focus_with_radius(0.0, 0.0, 0.0, 1))
-        .unwrap();
+    controller.tick(focus(0.0, 0.0, 0.0)).unwrap();
     let center_after_move = ChunkId::new(WorldId(7), ChunkCoord3 { x: 1, y: 0, z: 0 });
     let old_rank = controller.record(center_after_move).unwrap().rank();
 
