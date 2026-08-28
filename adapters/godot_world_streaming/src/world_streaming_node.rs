@@ -214,11 +214,9 @@ impl GodotWorldStreamingNode {
             return;
         };
         match controller.tick(StreamingTick::from_demand_changes(changes)) {
-            Ok(output) => self.emit_tick_output(
-                output.requests,
-                output.events,
-                output.request_id_exhausted,
-            ),
+            Ok(output) => {
+                self.emit_tick_output(output.requests, output.events, output.request_id_exhausted)
+            }
             Err(error) => {
                 let message = GString::from(format!("{error:?}").as_str());
                 self.signals().streaming_error().emit(&message);

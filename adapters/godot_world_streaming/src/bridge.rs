@@ -41,23 +41,16 @@ mod tests {
     fn provider_event_rejects_nonpositive_request_ids() {
         for request_id in [-1, 0] {
             assert!(
-                provider_event_from_godot(
-                    7,
-                    request_id,
-                    1,
-                    2,
-                    3,
-                    ProviderEventKind::Completed,
-                )
-                .is_none()
+                provider_event_from_godot(7, request_id, 1, 2, 3, ProviderEventKind::Completed,)
+                    .is_none()
             );
         }
     }
 
     #[test]
     fn provider_event_preserves_positive_request_ids_exactly() {
-        let event = provider_event_from_godot(7, i64::MAX, 1, 2, 3, ProviderEventKind::Completed)
-            .unwrap();
+        let event =
+            provider_event_from_godot(7, i64::MAX, 1, 2, 3, ProviderEventKind::Completed).unwrap();
         assert_eq!(event.request_id.get(), i64::MAX as u64);
     }
 }

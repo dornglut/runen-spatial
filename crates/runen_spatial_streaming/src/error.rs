@@ -1,4 +1,6 @@
-use crate::{ChunkAvailability, ChunkOperation, ProviderEventKind, StreamRequestId, StreamRequestKind};
+use crate::{
+    ChunkAvailability, ChunkOperation, ProviderEventKind, StreamRequestId, StreamRequestKind,
+};
 use runen_spatial::ChunkId;
 use runen_spatial_demand::SpatialDemandError;
 

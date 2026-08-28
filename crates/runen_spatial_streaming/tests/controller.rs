@@ -282,7 +282,10 @@ fn active_load_failure_after_reversal_needs_no_retry() {
         .accept_provider_event(provider_event(&load, ProviderEventKind::Failed))
         .unwrap();
 
-    assert_eq!(event_kinds(&events), vec![WorldStreamingEventKind::ProviderFailed]);
+    assert_eq!(
+        event_kinds(&events),
+        vec![WorldStreamingEventKind::ProviderFailed]
+    );
     assert!(controller.record(load.chunk_id).is_none());
 }
 
@@ -336,7 +339,10 @@ fn active_unload_failure_after_reversal_needs_no_retry() {
         .accept_provider_event(provider_event(&unload, ProviderEventKind::Failed))
         .unwrap();
 
-    assert_eq!(event_kinds(&events), vec![WorldStreamingEventKind::ProviderFailed]);
+    assert_eq!(
+        event_kinds(&events),
+        vec![WorldStreamingEventKind::ProviderFailed]
+    );
     let record = controller.record(load.chunk_id).unwrap();
     assert!(record.desired());
     assert_eq!(record.availability(), ChunkAvailability::Resident);
@@ -441,7 +447,10 @@ fn invalid_demand_transaction_leaves_controller_state_unchanged() {
             runen_spatial::SpatialMathError::WorldMismatch { .. }
         ))
     ));
-    assert_eq!(controller.records().copied().collect::<Vec<_>>(), records_before);
+    assert_eq!(
+        controller.records().copied().collect::<Vec<_>>(),
+        records_before
+    );
     assert_eq!(
         controller.pending_requests().copied().collect::<Vec<_>>(),
         pending_before
@@ -556,6 +565,9 @@ fn invalid_duplicate_demand_batch_leaves_controller_unchanged() {
             runen_spatial_demand::SpatialDemandError::DuplicateSourceChange { .. }
         )
     ));
-    assert_eq!(controller.records().copied().collect::<Vec<_>>(), records_before);
+    assert_eq!(
+        controller.records().copied().collect::<Vec<_>>(),
+        records_before
+    );
     assert_eq!(controller.effective_demand(), &snapshot_before);
 }

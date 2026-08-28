@@ -512,7 +512,10 @@ impl WorldStreamingController {
         }
     }
 
-    fn reconcile_idle_record(record: &mut ChunkRuntimeRecord, events: &mut Vec<WorldStreamingEvent>) {
+    fn reconcile_idle_record(
+        record: &mut ChunkRuntimeRecord,
+        events: &mut Vec<WorldStreamingEvent>,
+    ) {
         if record.operation != ChunkOperation::Idle {
             return;
         }
@@ -685,7 +688,9 @@ mod tests {
         }
         controller.next_request_id = StreamRequestId::try_new(u64::MAX);
 
-        let output = controller.tick(StreamingTick::without_demand_changes()).unwrap();
+        let output = controller
+            .tick(StreamingTick::without_demand_changes())
+            .unwrap();
 
         assert!(output.request_id_exhausted);
         assert!(output.requests.is_empty());
