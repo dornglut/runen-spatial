@@ -599,12 +599,7 @@ mod tests {
 
     #[test]
     fn demand_radii_reject_every_invalid_field_without_repair() {
-        for radii in [
-            [-1, 0, 0, 0],
-            [0, -1, 0, 0],
-            [0, 0, -1, 0],
-            [0, 0, 0, -1],
-        ] {
+        for radii in [[-1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]] {
             assert!(matches!(
                 requested_radii(radii),
                 Err(SpatialDemandError::CountOverflow {
