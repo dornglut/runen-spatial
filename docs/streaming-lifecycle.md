@@ -20,7 +20,7 @@ A tracked chunk record exists only while it carries runtime truth that must surv
 - an issued or provider-started load/unload operation;
 - an optional blocking load/unload failure while current availability does not satisfy current intent.
 
-For an already tracked chunk, desired intent and its current `DemandRank` are projected into the record so reversal and unload ordering remain deterministic. They are not a second desired-set authority.
+For an already tracked chunk, desired intent and its current `DemandRank` are projected internally into the record so reversal and unload ordering remain deterministic. That projection is bookkeeping only: `ChunkRuntimeRecord` does not expose desired state as an independent public authority; callers use the planner's effective demand for that question.
 
 There is no stored queued operation state. Pending work is derived:
 
@@ -79,4 +79,4 @@ Request IDs are opaque, nonzero, monotonically generated identities. They are ne
 
 A tick selects its capacity- and budget-bounded request batch, then reserves the complete request-ID batch before materializing any new load records or changing operations to issued state. If the remaining ID domain cannot satisfy that complete batch, it issues no new requests and reports `request_id_exhausted`. Successful demand changes from that tick remain committed and visible.
 
-Every retained `WorldStreamingEvent` is correlated to an issued request and therefore carries a non-optional `StreamRequestId`. Request lookup state is only a correlation index; the active operation owns the complete issued request.
+Request issuance is represented once by `StreamingTickOutput.requests`; it is not mirrored as `WorldStreamingEvent`. `WorldStreamingEvent` is reserved for accepted provider/lifecycle results and every retained event is therefore correlated to an issued request through a non-optional `StreamRequestId`. Request lookup state is only a correlation index; the active operation owns the complete issued request.
