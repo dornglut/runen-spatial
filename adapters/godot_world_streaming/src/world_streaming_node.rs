@@ -210,16 +210,14 @@ impl GodotWorldStreamingNode {
         max_load_requests_per_tick: i32,
         max_unload_requests_per_tick: i32,
     ) {
-        let budgets = match requested_budgets([
-            max_load_requests_per_tick,
-            max_unload_requests_per_tick,
-        ]) {
-            Ok(budgets) => budgets,
-            Err(error) => {
-                self.report_demand_error(error);
-                return;
-            }
-        };
+        let budgets =
+            match requested_budgets([max_load_requests_per_tick, max_unload_requests_per_tick]) {
+                Ok(budgets) => budgets,
+                Err(message) => {
+                    self.report_adapter_error(message);
+                    return;
+                }
+            };
         self.max_load_requests_per_tick = budgets.max_load_requests_per_tick;
         self.max_unload_requests_per_tick = budgets.max_unload_requests_per_tick;
         if let Some(controller) = &mut self.controller {
@@ -250,7 +248,8 @@ impl GodotWorldStreamingNode {
                     return;
                 }
             };
-        let changes = match demand_changes_from_node_values(position, self.requested_radii_values()) {
+        let changes = match demand_changes_from_node_values(position, self.requested_radii_values())
+        {
             Ok(transaction) => transaction,
             Err(error) => {
                 self.report_demand_error(error);
@@ -480,6 +479,11 @@ impl GodotWorldStreamingNode {
         true
     }
 
+    fn report_adapter_error(&mut self, message: &str) {
+        let message = GString::from(message);
+        self.signals().streaming_error().emit(&message);
+    }
+
     fn report_spatial_error(&mut self, error: SpatialMathError) {
         let message = GString::from(format!("{error:?}").as_str());
         self.signals().streaming_error().emit(&message);
@@ -595,15 +599,11 @@ fn requested_radii(requested: [i32; 4]) -> Result<[u32; 4], SpatialDemandError> 
     Ok(radii)
 }
 
-fn requested_budgets(requested: [i32; 2]) -> Result<StreamingBudgets, SpatialDemandError> {
-    let max_load_requests_per_tick =
-        usize::try_from(requested[0]).map_err(|_| SpatialDemandError::CountOverflow {
-            operation: "Godot max_load_requests_per_tick",
-        })?;
-    let max_unload_requests_per_tick =
-        usize::try_from(requested[1]).map_err(|_| SpatialDemandError::CountOverflow {
-            operation: "Godot max_unload_requests_per_tick",
-        })?;
+fn requested_budgets(requested: [i32; 2]) -> Result<StreamingBudgets, &'static str> {
+    let max_load_requests_per_tick = usize::try_from(requested[0])
+        .map_err(|_| "max_load_requests_per_tick must be non-negative")?;
+    let max_unload_requests_per_tick = usize::try_from(requested[1])
+        .map_err(|_| "max_unload_requests_per_tick must be non-negative")?;
     Ok(StreamingBudgets {
         max_load_requests_per_tick,
         max_unload_requests_per_tick,
@@ -753,18 +753,14 @@ mod tests {
                 max_unload_requests_per_tick: 3,
             })
         );
-        assert!(matches!(
+        assert_eq!(
             requested_budgets([-1, 3]),
-            Err(SpatialDemandError::CountOverflow {
-                operation: "Godot max_load_requests_per_tick"
-            })
-        ));
-        assert!(matches!(
+            Err("max_load_requests_per_tick must be non-negative")
+        );
+        assert_eq!(
             requested_budgets([3, -1]),
-            Err(SpatialDemandError::CountOverflow {
-                operation: "Godot max_unload_requests_per_tick"
-            })
-        ));
+            Err("max_unload_requests_per_tick must be non-negative")
+        );
     }
 
     #[test]
@@ -821,19 +817,18 @@ mod tests {
         assert!(controller_has_runtime_records(Some(&failed)));
 
         assert_eq!(active.pending_requests().count(), 1);
-        assert_eq!(request.kind, runen_spatial_streaming::StreamRequestKind::Load);
+        assert_eq!(
+            request.kind,
+            runen_spatial_streaming::StreamRequestKind::Load
+        );
     }
 
     #[test]
     fn planner_only_demand_does_not_block_structural_rebuild() {
         let capacity = StreamingCapacity::new(0, 0, 0);
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
-        let config = WorldStreamingConfig::new(
-            WorldId(7),
-            partition,
-            DemandLimits::default(),
-            capacity,
-        );
+        let config =
+            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
         let mut controller = WorldStreamingController::new(config);
         let focus = DemandFocus::try_new(
             WorldPosition::try_new(WorldId(7), [0.0, 0.0, 0.0]).unwrap(),
@@ -872,12 +867,8 @@ mod tests {
         capacity: StreamingCapacity,
     ) -> (WorldStreamingController, StreamRequest) {
         let partition = GridPartitionConfig::try_new(16.0, [8, 8, 8]).unwrap();
-        let mut config = WorldStreamingConfig::new(
-            WorldId(7),
-            partition,
-            DemandLimits::default(),
-            capacity,
-        );
+        let mut config =
+            WorldStreamingConfig::new(WorldId(7), partition, DemandLimits::default(), capacity);
         config.budgets = StreamingBudgets {
             max_load_requests_per_tick: 1,
             max_unload_requests_per_tick: 1,
