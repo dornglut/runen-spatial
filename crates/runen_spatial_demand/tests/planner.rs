@@ -11,7 +11,7 @@ fn partition() -> GridPartitionConfig {
 }
 
 fn planner(limits: DemandLimits) -> SpatialDemandPlanner {
-    SpatialDemandPlanner::new(WorldId(7), partition(), limits)
+    SpatialDemandPlanner::new(WorldId::new(7), partition(), limits)
 }
 
 fn focus(
@@ -59,7 +59,7 @@ fn constructors_reject_invalid_contracts() {
             Err(SpatialDemandError::ZeroLimit { limit: kind })
         );
     }
-    let position = WorldPosition::try_new(WorldId(7), [0.0; 3]).unwrap();
+    let position = WorldPosition::try_new(WorldId::new(7), [0.0; 3]).unwrap();
     assert_eq!(
         DemandFocus::try_new(position, 2, 1, 0, 0),
         Err(SpatialDemandError::RetainRadiusBelowDesired {
@@ -89,13 +89,16 @@ fn complete_replacement_and_removal_are_atomic() {
     planner
         .replace_source(
             source,
-            snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 1, 0, 0)), []),
+            snapshot(Some(focus(WorldId::new(7), [0.0; 3], 0, 1, 0, 0)), []),
         )
         .unwrap();
     let replacement = planner
         .replace_source(
             source,
-            snapshot(Some(focus(WorldId(7), [32.0, 0.0, 0.0], 0, 0, 0, 0)), []),
+            snapshot(
+                Some(focus(WorldId::new(7), [32.0, 0.0, 0.0], 0, 0, 0, 0)),
+                [],
+            ),
         )
         .unwrap();
     assert_eq!(replacement.entered().len(), 1);
@@ -110,14 +113,17 @@ fn source_local_hysteresis_does_not_leak_between_sources() {
     let mut planner = planner(DemandLimits::default());
     planner
         .apply_changes([
-            replace(1, focus(WorldId(7), [0.0; 3], 0, 1, 0, 0)),
-            replace(2, focus(WorldId(7), [160.0, 0.0, 0.0], 0, 0, 0, 0)),
+            replace(1, focus(WorldId::new(7), [0.0; 3], 0, 1, 0, 0)),
+            replace(2, focus(WorldId::new(7), [160.0, 0.0, 0.0], 0, 0, 0, 0)),
         ])
         .unwrap();
     planner
         .replace_source(
             DemandSourceId::new(1),
-            snapshot(Some(focus(WorldId(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+            snapshot(
+                Some(focus(WorldId::new(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)),
+                [],
+            ),
         )
         .unwrap();
     let chunks = planner.effective_snapshot().chunks();
@@ -137,14 +143,14 @@ fn world_mismatch_for_focus_or_pin_preserves_state() {
     planner
         .replace_source(
             DemandSourceId::new(1),
-            snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 0, 0, 0)), []),
+            snapshot(Some(focus(WorldId::new(7), [0.0; 3], 0, 0, 0, 0)), []),
         )
         .unwrap();
     let before = planner.effective_snapshot().clone();
 
     let wrong_focus = planner.replace_source(
         DemandSourceId::new(1),
-        snapshot(Some(focus(WorldId(8), [0.0; 3], 0, 0, 0, 0)), []),
+        snapshot(Some(focus(WorldId::new(8), [0.0; 3], 0, 0, 0, 0)), []),
     );
     assert!(matches!(
         wrong_focus,
@@ -158,7 +164,10 @@ fn world_mismatch_for_focus_or_pin_preserves_state() {
         DemandSourceId::new(2),
         snapshot(
             None,
-            [ChunkId::new(WorldId(8), ChunkCoord3 { x: 0, y: 0, z: 0 })],
+            [ChunkId::new(
+                WorldId::new(8),
+                ChunkCoord3 { x: 0, y: 0, z: 0 },
+            )],
         ),
     );
     assert!(matches!(
@@ -177,7 +186,7 @@ fn desired_volume_is_rejected_before_materialization() {
     assert_eq!(
         planner.replace_source(
             DemandSourceId::new(1),
-            snapshot(Some(focus(WorldId(7), [0.0; 3], 10, 10, 10, 10)), []),
+            snapshot(Some(focus(WorldId::new(7), [0.0; 3], 10, 10, 10, 10,)), [],),
         ),
         Err(SpatialDemandError::PerSourceContributionLimitExceeded {
             source_id: DemandSourceId::new(1),
@@ -192,11 +201,11 @@ fn desired_volume_is_rejected_before_materialization() {
 fn pins_override_focus_and_cannot_be_suppressed() {
     let limits = DemandLimits::try_new(1, 4, 4, 1).unwrap();
     let mut planner = planner(limits);
-    let pinned = ChunkId::new(WorldId(7), ChunkCoord3 { x: 9, y: 0, z: 0 });
+    let pinned = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 9, y: 0, z: 0 });
     planner
         .replace_source(
             DemandSourceId::new(1),
-            snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 0, 0, 0)), [pinned]),
+            snapshot(Some(focus(WorldId::new(7), [0.0; 3], 0, 0, 0, 0)), [pinned]),
         )
         .unwrap();
     assert_eq!(planner.effective_snapshot().chunks()[0].chunk_id(), pinned);
@@ -206,7 +215,7 @@ fn pins_override_focus_and_cannot_be_suppressed() {
     );
 
     let before = planner.effective_snapshot().clone();
-    let second_pin = ChunkId::new(WorldId(7), ChunkCoord3 { x: 10, y: 0, z: 0 });
+    let second_pin = ChunkId::new(WorldId::new(7), ChunkCoord3 { x: 10, y: 0, z: 0 });
     assert_eq!(
         planner.replace_source(DemandSourceId::new(1), snapshot(None, [pinned, second_pin]),),
         Err(SpatialDemandError::PinnedCapacityExceeded {
@@ -223,8 +232,8 @@ fn equal_sources_interleave_by_local_rank_before_source_id() {
     let mut planner = planner(limits);
     planner
         .apply_changes([
-            replace(2, focus(WorldId(7), [160.0, 0.0, 0.0], 0, 0, 1, 1)),
-            replace(1, focus(WorldId(7), [0.0, 0.0, 0.0], 0, 0, 1, 1)),
+            replace(2, focus(WorldId::new(7), [160.0, 0.0, 0.0], 0, 0, 1, 1)),
+            replace(1, focus(WorldId::new(7), [0.0, 0.0, 0.0], 0, 0, 1, 1)),
         ])
         .unwrap();
     let coords = planner
@@ -257,8 +266,8 @@ fn suppressed_demand_reenters_after_higher_ranked_source_is_removed() {
     let mut planner = planner(limits);
     planner
         .apply_changes([
-            replace(2, focus(WorldId(7), [16.0, 0.0, 0.0], 0, 0, 0, 0)),
-            replace(1, focus(WorldId(7), [0.0; 3], 0, 0, 0, 0)),
+            replace(2, focus(WorldId::new(7), [16.0, 0.0, 0.0], 0, 0, 0, 0)),
+            replace(1, focus(WorldId::new(7), [0.0; 3], 0, 0, 0, 0)),
         ])
         .unwrap();
     assert_eq!(
@@ -287,7 +296,7 @@ fn duplicate_change_and_source_limit_fail_atomically() {
     let limits = DemandLimits::try_new(1, 1, 1, 1).unwrap();
     let mut planner = planner(limits);
     planner
-        .apply_changes([replace(1, focus(WorldId(7), [0.0; 3], 0, 0, 0, 0))])
+        .apply_changes([replace(1, focus(WorldId::new(7), [0.0; 3], 0, 0, 0, 0))])
         .unwrap();
     let before = planner.effective_snapshot().clone();
 
@@ -307,7 +316,7 @@ fn duplicate_change_and_source_limit_fail_atomically() {
     assert_eq!(planner.effective_snapshot(), &before);
 
     assert_eq!(
-        planner.apply_changes([replace(2, focus(WorldId(8), [0.0; 3], 0, 0, 0, 0))]),
+        planner.apply_changes([replace(2, focus(WorldId::new(8), [0.0; 3], 0, 0, 0, 0),)]),
         Err(SpatialDemandError::SourceLimitExceeded {
             limit: 1,
             candidate: 2
@@ -319,8 +328,8 @@ fn duplicate_change_and_source_limit_fail_atomically() {
 #[test]
 fn input_permutation_and_replay_are_deterministic() {
     let changes_a = [
-        replace(2, focus(WorldId(7), [32.0, 0.0, 0.0], 0, 0, 1, 1)),
-        replace(1, focus(WorldId(7), [0.0; 3], 0, 0, 1, 1)),
+        replace(2, focus(WorldId::new(7), [32.0, 0.0, 0.0], 0, 0, 1, 1)),
+        replace(1, focus(WorldId::new(7), [0.0; 3], 0, 0, 1, 1)),
     ];
     let changes_b = [changes_a[1].clone(), changes_a[0].clone()];
     let mut first = planner(DemandLimits::default());
@@ -336,12 +345,13 @@ fn input_permutation_and_replay_are_deterministic() {
 #[test]
 fn distant_sources_with_bounded_local_radii_do_not_overflow_ranking() {
     let partition = GridPartitionConfig::try_new(1.0, [1, 1, 1]).unwrap();
-    let mut planner = SpatialDemandPlanner::new(WorldId(7), partition, DemandLimits::default());
+    let mut planner =
+        SpatialDemandPlanner::new(WorldId::new(7), partition, DemandLimits::default());
     let far = 2_f64.powi(62);
     planner
         .apply_changes([
-            replace(1, focus(WorldId(7), [-far, 0.0, 0.0], 0, 0, 1, 1)),
-            replace(2, focus(WorldId(7), [far, 0.0, 0.0], 0, 0, 1, 1)),
+            replace(1, focus(WorldId::new(7), [-far, 0.0, 0.0], 0, 0, 1, 1)),
+            replace(2, focus(WorldId::new(7), [far, 0.0, 0.0], 0, 0, 1, 1)),
         ])
         .unwrap();
     assert_eq!(planner.effective_snapshot().len(), 6);
@@ -354,8 +364,8 @@ fn total_contribution_limit_rejects_the_batch_atomically() {
 
     let error = planner
         .apply_changes([
-            replace(1, focus(WorldId(7), [0.0; 3], 2, 2, 0, 0)),
-            replace(2, focus(WorldId(7), [160.0, 0.0, 0.0], 2, 2, 0, 0)),
+            replace(1, focus(WorldId::new(7), [0.0; 3], 2, 2, 0, 0)),
+            replace(2, focus(WorldId::new(7), [160.0, 0.0, 0.0], 2, 2, 0, 0)),
         ])
         .unwrap_err();
 
@@ -377,14 +387,17 @@ fn delta_distinguishes_entry_class_change_rerank_and_exit() {
     planner
         .replace_source(
             source,
-            snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 1, 0, 0)), []),
+            snapshot(Some(focus(WorldId::new(7), [0.0; 3], 0, 1, 0, 0)), []),
         )
         .unwrap();
 
     let moved_once = planner
         .replace_source(
             source,
-            snapshot(Some(focus(WorldId(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+            snapshot(
+                Some(focus(WorldId::new(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)),
+                [],
+            ),
         )
         .unwrap();
     assert_eq!(moved_once.entered().len(), 1);
@@ -399,7 +412,10 @@ fn delta_distinguishes_entry_class_change_rerank_and_exit() {
     let moved_twice = planner
         .replace_source(
             source,
-            snapshot(Some(focus(WorldId(7), [32.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+            snapshot(
+                Some(focus(WorldId::new(7), [32.0, 0.0, 0.0], 0, 1, 0, 0)),
+                [],
+            ),
         )
         .unwrap();
     assert_eq!(moved_twice.entered().len(), 1);

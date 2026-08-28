@@ -11,7 +11,7 @@ pub fn chunk_coord_from_xyz(x: i64, y: i64, z: i64) -> ChunkCoord3 {
 }
 
 pub fn chunk_id_from_xyz(world_id: u16, x: i64, y: i64, z: i64) -> ChunkId {
-    ChunkId::new(WorldId(world_id), chunk_coord_from_xyz(x, y, z))
+    ChunkId::new(WorldId::new(world_id), chunk_coord_from_xyz(x, y, z))
 }
 
 pub fn provider_event_from_godot(

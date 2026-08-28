@@ -1,12 +1,12 @@
-pub mod error;
-pub mod frames;
-pub mod ids;
-pub mod positions;
+mod error;
+mod frames;
+mod ids;
+mod positions;
 
-pub mod clipmap;
-pub mod grid;
-pub mod hash;
-pub mod ring;
+mod clipmap;
+mod grid;
+mod hash;
+mod ring;
 
 pub use error::SpatialMathError;
 pub use frames::WorldFrame;

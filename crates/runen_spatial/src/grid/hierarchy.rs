@@ -173,9 +173,7 @@ impl HierarchicalGridConfig {
     }
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct HierarchicalChunkId {
     pub world_id: WorldId,
     pub level: GridLevel,
