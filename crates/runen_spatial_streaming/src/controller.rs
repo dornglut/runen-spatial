@@ -728,7 +728,7 @@ impl WorldStreamingController {
             let request = StreamRequest {
                 request_id,
                 chunk_id,
-                kind,
+                kind: StreamRequestKind::Unload,
                 rank,
             };
             record.operation = ChunkOperation::UnloadRequested(request);
