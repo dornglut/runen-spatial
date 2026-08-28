@@ -26,12 +26,8 @@ fn controller_with_capacity(
     unload_budget: usize,
     capacity: StreamingCapacity,
 ) -> WorldStreamingController {
-    let mut config = WorldStreamingConfig::new(
-        WorldId(7),
-        partition(),
-        DemandLimits::default(),
-        capacity,
-    );
+    let mut config =
+        WorldStreamingConfig::new(WorldId(7), partition(), DemandLimits::default(), capacity);
     config.budgets = StreamingBudgets {
         max_load_requests_per_tick: load_budget,
         max_unload_requests_per_tick: unload_budget,
