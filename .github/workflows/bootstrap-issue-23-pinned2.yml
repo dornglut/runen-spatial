@@ -1,0 +1,51 @@
+name: Bootstrap issue 23 pinned 2
+
+on:
+  push:
+    branches:
+      - refactor/godot-adapter-ownership
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.event.head_commit.message == 'Correct issue 23 executor'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Execute reviewed bootstrap steps
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source = Path('.github/workflows/bootstrap-issue-23.yml')
+          text = source.read_text()
+          names = [
+              'Apply authorized topology cutover',
+              'Reconcile generated Cargo lockfile',
+              'Commit candidate and remove bootstrap workflow',
+              'Validate clean candidate',
+              'Push candidate',
+          ]
+
+          for name in names:
+              marker = f'      - name: {name}\n'
+              start = text.index(marker)
+              run_start = text.index('        run: |\n', start) + len('        run: |\n')
+              next_step = text.find('      - name: ', run_start)
+              end = len(text) if next_step == -1 else next_step
+              raw = text[run_start:end]
+              lines = raw.splitlines()
+              body = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+              if name == 'Commit candidate and remove bootstrap workflow':
+                  Path('.github/workflows/bootstrap-issue-23-pinned.yml').unlink()
+                  Path('.github/workflows/bootstrap-issue-23-pinned2.yml').unlink()
+              print(f'Executing: {name}', flush=True)
+              subprocess.run(['bash', '-euo', 'pipefail', '-c', body], check=True)
+          PY
