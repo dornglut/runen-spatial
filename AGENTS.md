@@ -1,43 +1,31 @@
 # RunenSpatial Agent Guide
 
-Start with `README.md`, `ARCHITECTURE.md`, `TESTING.md`, `docs/architecture.md`, `docs/package-boundaries.md`, and `docs/roadmap.md`.
+## Authority
 
-## Repository mission
+Read [documentation architecture](docs/documentation-architecture.md) before editing durable documentation or changing ownership boundaries.
 
-RunenSpatial owns host-neutral spatial mechanics. It must not acquire world-product, SDF, procgen, ECS, render, GPU, IO, persistence, application-policy, or Godot-scene responsibilities.
+Follow the organization-wide authority, work, repository, validation, GitHub, and licensing rules in `dornglut/engineering`. Live work authority comes from the current accepted GitHub issue and repository state, not copied status prose in this repository.
 
-## Required workflow
+For a change, inspect the canonical owner for the concern plus the affected source and tests before editing.
 
-1. Read the current architecture, package-boundary, validation, provenance, and roadmap authorities.
-2. Work only under an accepted repository issue with explicit scope and exclusions.
-3. Keep one owner per concept and preserve dependency direction.
-4. Do not introduce compatibility façades, forwarding crates, copied source, external path dependencies, or duplicate authority.
-5. Keep package additions, splits, and publication behind a proven ownership and consumer boundary.
-6. Run `cargo validate` before declaring a change ready.
-7. Use exact-head GitHub Actions as merge evidence.
-8. Update durable docs only when architecture, ownership, sequence, or provenance changes; do not store live branch, PR, SHA, or workflow inventories in them.
+## Repository rules
 
-## Cold-start pickup
+- Keep RunenSpatial host-neutral. Do not introduce Runenwerk, Godot, ECS, renderer, GPU, IO, async-runtime, product, gameplay, persistence, or network policy into the core framework packages.
+- Prefer valid-by-construction or explicitly checked public contracts. Do not silently clamp, saturate, wrap, or repair invalid spatial identity/configuration state unless that behavior is itself the documented contract.
+- Do not add compatibility aliases, forwarding modules/crates, duplicate authorities, source mirrors, external path dependencies, submodules, or branch dependencies as migration mechanisms.
+- Do not retain a package boundary merely because it already exists. A durable package needs independent ownership, dependency/versioning value, and a proven consumer or contract.
+- Do not add speculative abstractions for possible future geometry, products, engines, or consumers.
+- Keep durable docs free of current branch, pull request, exact-head, workflow-run, current-child, or temporary blocker state.
+- Historical repository names and exact revisions belong only in explicit provenance/history material.
 
-1. Read the repository authorities listed above.
-2. Open parent issue #1.
-3. Follow its Current child.
-4. Read that child’s latest status comment.
-5. Inspect its associated pull request and exact-head CI.
-6. Fetch and verify origin/main before branching.
-7. Never infer live execution state from durable roadmap prose.
+## Validation
 
-## Public API rules
+The repository-owned validation entry point is:
 
-- Prefer explicit domain types and validated construction.
-- Keep stable spatial identities separate from frame-local coordinates.
-- Keep demand, availability, operations, failures, products, render caches, and GPU realization as separate facts.
-- Keep host purpose opaque; do not add collision, rendering, navigation, replication, or editor policy to core contracts.
-- Avoid macro or derive magic that hides ownership or invariants.
+```text
+cargo validate
+```
 
-## Validation and files
+Run it from a checked-out candidate before publication when the change depends on compilation, tests, linting, or generated Cargo state. Pull requests must also pass validation at the exact reviewed head through the repository workflow.
 
-- `cargo validate` is the maintained local and CI authority.
-- Tracked authored text files must remain at or below 128 KiB.
-- Generated artifacts and build products are not source authority.
-- The repository must remain independently buildable without sibling checkouts.
+Do not replace repository validation with ad-hoc command lists in CI or durable docs.

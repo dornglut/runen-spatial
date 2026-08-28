@@ -1,31 +1,31 @@
-# Testing and Validation
+# RunenSpatial Validation
 
-`cargo validate` is the single maintained local and CI validation authority for RunenSpatial.
-
-It validates the current `runen-spatial` package family and rejects retired
-package identities and the deleted broad prelude.
-
-It verifies:
-
-- repository policy, required files, manifest inventory, package metadata, publication state, and dependency containment;
-- the exact read-only shared-workflow caller and immutable workflow revision;
-- Markdown links, transfer provenance, authored-file size, symlink and gitlink policy, and current Dornglut authority;
-- locked metadata, formatting, core tests, full workspace checks, denied-warning Clippy, denied-warning rustdoc, and Rust 1.93.0 core compatibility;
-- diff hygiene and a clean tracked repository state after validation.
-
-Spatial-contract tests cover finite namespaced positions, translation-only frame
-round trips and namespace mismatches, signed `i64` coordinate boundaries,
-negative floor mapping, checked hierarchy and clipmap bounds, full-range ring
-mapping, and non-mutating demand and streaming failures.
-
-## Required command
+The canonical repository validation command is:
 
 ```text
 cargo validate
 ```
 
-Run focused commands while editing, but do not substitute them for the complete validation authority before review or merge. GitHub Actions invokes the same repository-owned command through the immutable Dornglut shared Rust workflow.
+It is implemented by the private `xtask` package and is the single maintained local/CI entry point.
 
-The core packages inherit Rust 1.93.0 and `unsafe_code = "forbid"`. The optional Godot adapter is checked on stable Rust, makes no adapter-specific MSRV claim, and carries one explicit `unsafe_code = "allow"` exception because Godot's GDExtension entry point requires an unsafe trait implementation. The exception does not propagate into core packages.
+## What validation covers
 
-See [the detailed validation contract](docs/tooling/validation.md).
+The command checks:
+
+1. repository authority, package/manifest inventory, licensing metadata, contained path dependencies, file-size/symlink policy, retired surfaces, transfer provenance, and exact shared-workflow shape;
+2. relative Markdown links;
+3. locked Cargo metadata;
+4. formatting;
+5. workspace tests, excluding the optional Godot adapter from the core test/MSRV pass;
+6. all-target workspace checking and denied-warning Clippy;
+7. denied-warning workspace rustdoc;
+8. the declared Rust 1.93.0 core test baseline;
+9. `git diff --check` and a clean repository state after validation.
+
+The optional Godot adapter participates in workspace check/Clippy/rustdoc but does not define the core MSRV.
+
+## CI
+
+`.github/workflows/validation.yml` is intentionally a thin, read-only caller of Dornglut's immutable shared Rust validation workflow. It must delegate to `cargo validate` rather than reproduce a second command list.
+
+Pull-request acceptance requires validation at the exact reviewed head. Accepted-main validation is the post-merge repository evidence.
