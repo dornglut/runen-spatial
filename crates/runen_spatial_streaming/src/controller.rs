@@ -755,9 +755,7 @@ impl WorldStreamingController {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        StreamingCapacity, StreamingTick, WorldStreamingConfig, WorldStreamingController,
-    };
+    use super::{StreamingCapacity, StreamingTick, WorldStreamingConfig, WorldStreamingController};
     use crate::StreamRequestId;
     use runen_spatial::{GridPartitionConfig, WorldId, WorldPosition};
     use runen_spatial_demand::{
