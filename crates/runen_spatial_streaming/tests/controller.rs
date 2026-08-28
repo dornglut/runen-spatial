@@ -273,6 +273,20 @@ fn active_load_reversal_finishes_then_queues_unload() {
 }
 
 #[test]
+fn active_load_failure_after_reversal_needs_no_retry() {
+    let mut controller = single_chunk_controller();
+    let load = load_single_chunk(&mut controller);
+    controller.tick(single_focus(16.0, 0.0, 0.0)).unwrap();
+
+    let events = controller
+        .accept_provider_event(provider_event(&load, ProviderEventKind::Failed))
+        .unwrap();
+
+    assert_eq!(event_kinds(&events), vec![WorldStreamingEventKind::ProviderFailed]);
+    assert!(controller.record(load.chunk_id).is_none());
+}
+
+#[test]
 fn active_unload_reversal_finishes_then_queues_load() {
     let mut controller = single_chunk_controller();
     let load = make_resident(&mut controller);
@@ -303,6 +317,31 @@ fn active_unload_reversal_finishes_then_queues_load() {
     assert!(record.desired());
     assert_eq!(record.availability(), ChunkAvailability::Absent);
     assert_eq!(record.operation(), ChunkOperation::LoadQueued);
+}
+
+#[test]
+fn active_unload_failure_after_reversal_needs_no_retry() {
+    let mut controller = single_chunk_controller();
+    let load = make_resident(&mut controller);
+    let unload = controller
+        .tick(single_focus(16.0, 0.0, 0.0))
+        .unwrap()
+        .requests
+        .into_iter()
+        .find(|request| request.kind == StreamRequestKind::Unload)
+        .unwrap();
+    controller.tick(single_focus(0.0, 0.0, 0.0)).unwrap();
+
+    let events = controller
+        .accept_provider_event(provider_event(&unload, ProviderEventKind::Failed))
+        .unwrap();
+
+    assert_eq!(event_kinds(&events), vec![WorldStreamingEventKind::ProviderFailed]);
+    let record = controller.record(load.chunk_id).unwrap();
+    assert!(record.desired());
+    assert_eq!(record.availability(), ChunkAvailability::Resident);
+    assert_eq!(record.operation(), ChunkOperation::Idle);
+    assert_eq!(record.blocking_failure(), None);
 }
 
 #[test]
