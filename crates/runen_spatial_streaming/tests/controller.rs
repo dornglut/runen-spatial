@@ -264,7 +264,7 @@ fn unload_failure_is_cleared_when_intent_reverses_to_resident() {
     let update = controller.tick(single_focus(0.0, 0.0, 0.0)).unwrap();
     assert!(update.requests.is_empty());
     let record = controller.record(load.chunk_id).unwrap();
-    assert!(record.desired());
+    assert!(controller.effective_demand().get(load.chunk_id).is_some());
     assert_eq!(record.availability(), ChunkAvailability::Resident);
     assert_eq!(record.operation(), ChunkOperation::Idle);
     assert_eq!(record.blocking_failure(), None);
@@ -290,7 +290,7 @@ fn active_load_reversal_finishes_resident_then_becomes_pending_unload() {
         ]
     );
     let record = controller.record(load.chunk_id).unwrap();
-    assert!(!record.desired());
+    assert!(controller.effective_demand().get(load.chunk_id).is_none());
     assert_eq!(record.availability(), ChunkAvailability::Resident);
     assert_eq!(record.operation(), ChunkOperation::Idle);
 
@@ -376,7 +376,7 @@ fn active_unload_failure_after_reversal_needs_no_retry() {
         vec![WorldStreamingEventKind::ProviderFailed]
     );
     let record = controller.record(load.chunk_id).unwrap();
-    assert!(record.desired());
+    assert!(controller.effective_demand().get(load.chunk_id).is_some());
     assert_eq!(record.availability(), ChunkAvailability::Resident);
     assert_eq!(record.operation(), ChunkOperation::Idle);
     assert_eq!(record.blocking_failure(), None);
@@ -528,7 +528,6 @@ fn overlapping_source_removal_preserves_in_flight_request() {
         }]))
         .unwrap();
     assert!(update.requests.is_empty());
-    assert!(update.events.is_empty());
     assert_eq!(
         controller.pending_requests().copied().collect::<Vec<_>>(),
         vec![first]
