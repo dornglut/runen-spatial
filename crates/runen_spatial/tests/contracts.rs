@@ -295,6 +295,21 @@ fn hierarchy_child_bounds_cover_each_parent_without_overlap() {
 #[test]
 fn clipmap_and_ring_are_checked_mapping_primitives() {
     let clipmap = ClipmapConfig::try_new(2.0, 2, 2, [3, 3, 3]).unwrap();
+    assert_eq!(
+        clipmap
+            .cell_edge_meters_for_level(ClipmapLevel(1))
+            .unwrap(),
+        4.0
+    );
+    assert_eq!(
+        clipmap
+            .cell_edge_meters_for_level(ClipmapLevel(2))
+            .unwrap_err(),
+        SpatialMathError::LevelOutOfRange {
+            level: 2,
+            level_count: 2,
+        }
+    );
     let position = WorldPosition::try_new(WorldId(1), [-0.1, 0.0, 0.0]).unwrap();
     assert_eq!(
         clipmap_coord_from_world_position(&clipmap, ClipmapLevel(0), position)
