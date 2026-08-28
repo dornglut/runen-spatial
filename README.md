@@ -19,7 +19,7 @@ The current workspace provides:
 
 RunenSpatial is public, unpublished, and pre-release. The current API is not a stable persistence or wire-format promise.
 
-Known architectural work remains around standalone conformance and the later Runenwerk consumer cutover.
+Known architectural work remains around the later Runenwerk consumer cutover.
 
 ## Validation
 
