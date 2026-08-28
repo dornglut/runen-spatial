@@ -386,7 +386,7 @@ impl WorldStreamingController {
             self.mark_desired(chunk.chunk_id(), chunk.rank(), events);
         }
         for chunk in delta.updated() {
-            self.refresh_priority(chunk.chunk_id(), chunk.rank());
+            self.refresh_rank(chunk.chunk_id(), chunk.rank());
         }
         for chunk in delta.exited() {
             self.mark_undesired(chunk.chunk_id(), chunk.rank(), events);
@@ -454,7 +454,7 @@ impl WorldStreamingController {
         }
     }
 
-    fn refresh_priority(&mut self, chunk_id: ChunkId, rank: DemandRank) {
+    fn refresh_rank(&mut self, chunk_id: ChunkId, rank: DemandRank) {
         if let Some(record) = self.records.get_mut(&chunk_id) {
             record.rank = rank;
         }

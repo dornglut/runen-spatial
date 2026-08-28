@@ -346,3 +346,67 @@ fn distant_sources_with_bounded_local_radii_do_not_overflow_ranking() {
         .unwrap();
     assert_eq!(planner.effective_snapshot().len(), 6);
 }
+
+#[test]
+fn total_contribution_limit_rejects_the_batch_atomically() {
+    let limits = DemandLimits::try_new(2, 25, 40, 40).unwrap();
+    let mut planner = planner(limits);
+
+    let error = planner
+        .apply_changes([
+            replace(1, focus(WorldId(7), [0.0; 3], 2, 2, 0, 0)),
+            replace(2, focus(WorldId(7), [160.0, 0.0, 0.0], 2, 2, 0, 0)),
+        ])
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        SpatialDemandError::TotalContributionLimitExceeded {
+            limit: 40,
+            candidate: 50,
+        }
+    );
+    assert_eq!(planner.source_count(), 0);
+    assert!(planner.effective_snapshot().is_empty());
+}
+
+#[test]
+fn delta_distinguishes_entry_class_change_rerank_and_exit() {
+    let mut planner = planner(DemandLimits::default());
+    let source = DemandSourceId::new(1);
+    planner
+        .replace_source(
+            source,
+            snapshot(Some(focus(WorldId(7), [0.0; 3], 0, 1, 0, 0)), []),
+        )
+        .unwrap();
+
+    let moved_once = planner
+        .replace_source(
+            source,
+            snapshot(Some(focus(WorldId(7), [16.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+        )
+        .unwrap();
+    assert_eq!(moved_once.entered().len(), 1);
+    assert_eq!(moved_once.updated().len(), 1);
+    assert!(moved_once.exited().is_empty());
+    assert_eq!(
+        moved_once.updated()[0].chunk_id().coord,
+        ChunkCoord3 { x: 0, y: 0, z: 0 }
+    );
+    assert_eq!(moved_once.updated()[0].class(), DemandClass::Retained);
+
+    let moved_twice = planner
+        .replace_source(
+            source,
+            snapshot(Some(focus(WorldId(7), [32.0, 0.0, 0.0], 0, 1, 0, 0)), []),
+        )
+        .unwrap();
+    assert_eq!(moved_twice.entered().len(), 1);
+    assert_eq!(moved_twice.updated().len(), 1);
+    assert_eq!(moved_twice.exited().len(), 1);
+    assert_eq!(
+        moved_twice.exited()[0].chunk_id().coord,
+        ChunkCoord3 { x: 0, y: 0, z: 0 }
+    );
+}
