@@ -8,10 +8,14 @@ Make retained foundational public values and operations intentional and internal
 
 Do not add generic geometry/index abstractions without a proven consumer.
 
-## 2. Prove standalone conformance
+## 2. Harden retained integration contracts
+
+Harden the retained `godot_world_streaming` translation boundary against the accepted host-neutral demand and lifecycle contracts. Keep Godot-specific scene, provider, cache, realization, and product policy outside the framework packages, and keep the adapter API pre-release until its translation behavior is independently proven.
+
+## 3. Prove standalone conformance
 
 Exercise the retained public packages through host-neutral public APIs without internal source access. Bind deterministic replay, bounded resource behavior, failure propagation, and package independence before publication is considered.
 
-## 3. Cut over Runenwerk separately
+## 4. Cut over Runenwerk separately
 
 Authorize downstream Runenwerk migration only after standalone conformance. Migrate in dependency order and delete duplicate Runenwerk authority component-by-component. Do not use permanent wrappers, forwarding crates, source mirrors, branch dependencies, or submodules.
