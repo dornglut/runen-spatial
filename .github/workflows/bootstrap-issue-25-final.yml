@@ -1,0 +1,297 @@
+name: Finalize issue 25
+
+on:
+  push:
+    branches:
+      - refactor/multi-source-demand
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.event.head_commit.message == 'Finalize issue 25 candidate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Re-derive and critically refine candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          source = Path('.github/workflows/bootstrap-issue-25.yml')
+          text = source.read_text()
+          marker = '      - name: Re-derive bounded multi-source demand\n'
+          start = text.index(marker)
+          run_start = text.index('        run: |\n', start) + len('        run: |\n')
+          next_step = text.index('      - name: Validate clean candidate\n', run_start)
+          raw = text[run_start:next_step]
+          lines = raw.splitlines()
+          body = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          prefix, separator, _ = body.partition('\ncargo fmt --all\n')
+          if not separator:
+              raise SystemExit('could not isolate issue 25 transformation prefix')
+          subprocess.run(['bash', '-euo', 'pipefail', '-c', prefix], check=True)
+
+          Path('crates/runen_spatial_demand/src/identity.rs').write_text('''#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+          pub struct DemandSourceId(u64);
+
+          impl DemandSourceId {
+              pub const fn new(value: u64) -> Self {
+                  Self(value)
+              }
+
+              pub const fn get(self) -> u64 {
+                  self.0
+              }
+          }
+
+          #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+          pub struct DemandRank(u32);
+
+          impl DemandRank {
+              pub(crate) fn from_bounded_index(index: usize) -> Self {
+                  Self(u32::try_from(index).expect(
+                      "effective demand index is bounded by the u32 effective-chunk limit",
+                  ))
+              }
+
+              pub const fn get(self) -> u32 {
+                  self.0
+              }
+          }
+
+          #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+          pub enum DemandClass {
+              Pinned,
+              Desired,
+              Retained,
+          }
+
+          #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+          pub enum DemandAxis {
+              Horizontal,
+              Vertical,
+          }
+
+          #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+          pub enum DemandLimitKind {
+              Sources,
+              ContributionsPerSource,
+              TotalContributions,
+              EffectiveChunks,
+          }
+          ''')
+
+          p = Path('crates/runen_spatial_demand/src/error.rs')
+          error = p.read_text()
+          error = re.sub(
+              r'\n    EffectiveRankOverflow \{\n        candidate: usize,\n    \},',
+              '',
+              error,
+              count=1,
+          )
+          p.write_text(error)
+
+          p = Path('crates/runen_spatial_demand/src/planner.rs')
+          planner = p.read_text()
+          planner = planner.replace(
+              '''        if let Some(focus) = snapshot.focus() {
+              if focus.position().world_id() != self.world_id {
+                  return Err(SpatialMathError::WorldMismatch {
+                      expected: self.world_id,
+                      actual: focus.position().world_id(),
+                  }
+                  .into());
+              }
+          }
+          ''',
+              '''        if let Some(focus) = snapshot.focus()
+              && focus.position().world_id() != self.world_id
+          {
+              return Err(SpatialMathError::WorldMismatch {
+                  expected: self.world_id,
+                  actual: focus.position().world_id(),
+              }
+              .into());
+          }
+          ''',
+              1,
+          )
+
+          old_total = '''        let mut total = 0_usize;
+          let mut effective = BTreeMap::<ChunkId, Contribution>::new();
+          for (source_id, state) in &sources {
+              let contributions = self.source_contributions(*source_id, state)?;
+              total = total.checked_add(contributions.len()).ok_or(
+                  SpatialDemandError::CountOverflow {
+                      operation: "total source contributions",
+                  },
+              )?;
+              let total_limit = usize::try_from(self.limits.max_total_contributions())
+                  .map_err(|_| SpatialDemandError::CountOverflow {
+                      operation: "total contribution limit conversion",
+                  })?;
+              if total > total_limit {
+                  return Err(SpatialDemandError::TotalContributionLimitExceeded {
+                      limit: self.limits.max_total_contributions(),
+                      candidate: total,
+                  });
+              }
+              for contribution in contributions {
+          '''
+          new_total = '''        let total_limit = usize::try_from(self.limits.max_total_contributions())
+              .map_err(|_| SpatialDemandError::CountOverflow {
+                  operation: "total contribution limit conversion",
+              })?;
+          let mut total = 0_usize;
+          for (source_id, state) in &sources {
+              let source_count = source_contribution_count(*source_id, state, self.limits)?;
+              total = total.checked_add(source_count).ok_or(
+                  SpatialDemandError::CountOverflow {
+                      operation: "total source contributions",
+                  },
+              )?;
+              if total > total_limit {
+                  return Err(SpatialDemandError::TotalContributionLimitExceeded {
+                      limit: self.limits.max_total_contributions(),
+                      candidate: total,
+                  });
+              }
+          }
+
+          let mut effective = BTreeMap::<ChunkId, Contribution>::new();
+          for (source_id, state) in &sources {
+              let contributions = self.source_contributions(*source_id, state)?;
+              for contribution in contributions {
+          '''
+          if old_total not in planner:
+              raise SystemExit('candidate total-contribution block changed unexpectedly')
+          planner = planner.replace(old_total, new_total, 1)
+
+          old_rank = '''        let demanded = candidates
+              .into_iter()
+              .take(capacity)
+              .enumerate()
+              .map(|(index, contribution)| {
+                  Ok(DemandedChunk::new(
+                      contribution.chunk_id,
+                      DemandRank::try_from_index(index)?,
+                      contribution.class,
+                  ))
+              })
+              .collect::<Result<Vec<_>, SpatialDemandError>>()?;
+          '''
+          new_rank = '''        let demanded = candidates
+              .into_iter()
+              .take(capacity)
+              .enumerate()
+              .map(|(index, contribution)| {
+                  DemandedChunk::new(
+                      contribution.chunk_id,
+                      DemandRank::from_bounded_index(index),
+                      contribution.class,
+                  )
+              })
+              .collect::<Vec<_>>();
+          '''
+          if old_rank not in planner:
+              raise SystemExit('candidate rank construction changed unexpectedly')
+          planner = planner.replace(old_rank, new_rank, 1)
+
+          helper_marker = 'fn insert_limited(\n'
+          helper = '''fn source_contribution_count(
+              source_id: DemandSourceId,
+              state: &SourceState,
+              limits: DemandLimits,
+          ) -> Result<usize, SpatialDemandError> {
+              let additional_pins = state
+                  .snapshot
+                  .pins()
+                  .filter(|pin| !state.focus_chunks.contains_key(&pin.coord))
+                  .count();
+              let candidate = state.focus_chunks.len().checked_add(additional_pins).ok_or(
+                  SpatialDemandError::CountOverflow {
+                      operation: "source contribution count",
+                  },
+              )?;
+              let limit = usize::try_from(limits.max_contributions_per_source()).map_err(|_| {
+                  SpatialDemandError::CountOverflow {
+                      operation: "per-source limit conversion",
+                  }
+              })?;
+              if candidate > limit {
+                  return Err(SpatialDemandError::PerSourceContributionLimitExceeded {
+                      source_id,
+                      limit: limits.max_contributions_per_source(),
+                      candidate,
+                  });
+              }
+              Ok(candidate)
+          }
+
+          '''
+          if helper_marker not in planner:
+              raise SystemExit('candidate helper insertion point changed unexpectedly')
+          planner = planner.replace(helper_marker, helper + helper_marker, 1)
+          p.write_text(planner)
+
+          # Rank is the canonical streaming scheduling vocabulary in this slice. Source priority is not.
+          for path in [
+              'crates/runen_spatial_streaming/src/controller.rs',
+              'crates/runen_spatial_streaming/src/request.rs',
+              'crates/runen_spatial_streaming/tests/controller.rs',
+          ]:
+              p = Path(path)
+              value = p.read_text()
+              value = re.sub(r'\bpriority\b', 'rank', value)
+              p.write_text(value)
+
+          # The generic default remains opt-in convenience: constructors still require a DemandLimits value.
+          # Make that distinction explicit in the demand authority document.
+          p = Path('docs/spatial-demand.md')
+          docs = p.read_text()
+          needle = 'The planner bounds source count, contributions per source, total contributions, and effective chunks. Desired-box cardinality is checked before materialization. Hard-limit or world/coordinate failures reject the whole source-change batch without mutation.'
+          replacement = needle + '\n\n`DemandLimits::default()` is only an opt-in convenience profile; planner and streaming constructors still require an explicit limits value, and callers may provide stricter bounds.'
+          if needle not in docs:
+              raise SystemExit('demand limits documentation insertion point changed unexpectedly')
+          p.write_text(docs.replace(needle, replacement, 1))
+
+          # Prove the vocabulary cleanup did not leave the old field name behind.
+          for path in [
+              'crates/runen_spatial_streaming/src/controller.rs',
+              'crates/runen_spatial_streaming/src/request.rs',
+          ]:
+              value = Path(path).read_text()
+              if re.search(r'\bpriority\b', value):
+                  raise SystemExit(f'stale streaming priority vocabulary remains in {path}')
+
+          if 'EffectiveRankOverflow' in Path('crates/runen_spatial_demand/src/error.rs').read_text():
+              raise SystemExit('false effective-rank fallibility remains')
+          PY
+
+          cargo fmt --all
+
+          rm .github/workflows/bootstrap-issue-25.yml
+          rm .github/workflows/bootstrap-issue-25-final.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Replace legacy demand with multi-source planning"
+
+      - name: Validate clean candidate
+        shell: bash
+        run: cargo validate
+
+      - name: Push candidate
+        shell: bash
+        run: |
+          git push origin HEAD:refactor/multi-source-demand
+          git push origin --delete tmp-check || true
