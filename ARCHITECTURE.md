@@ -61,4 +61,4 @@ Core packages must remain independent of Runenwerk, Godot, SDF/product implement
 
 ## External integration
 
-Runenwerk still has its own internal spatial/index/chunking/world-streaming implementation and does not currently depend on this workspace. A future consumer cutover is separate downstream work: prove the standalone contract first, migrate one accepted component at a time, then delete the corresponding duplicate Runenwerk authority without forwarding crates or mirrored source.
+Runenwerk consumes the standalone `runen-spatial` foundation through its public crate API. It does not currently consume `runen-spatial-demand` or `runen-spatial-streaming` because retained Runenwerk workloads do not require those packages. Runenwerk-specific product and integration policy remains in Runenwerk; adoption of additional RunenSpatial packages should follow proven consumer requirements rather than a package-for-package migration.
